@@ -26,6 +26,24 @@ class Zone:
     def copy(self):
         return type(self)(self.owner, self.position)
 
+class Grave(Zone):
+    pass
+
+class Hand(Zone):
+    pass
+
+class Deck(Zone):
+    pass
+
+class Field(Zone):
+    pass
+
+class Stack(Zone):
+    pass
+
+class Any(Zone):
+    pass
+
 class Game:
     def __init__(self, decks: List[List['Card']], track_history: bool = False):
         self.history = []
@@ -40,9 +58,9 @@ class Game:
             0,0
         )
         if track_history:
-            ChangeTracker.on_change(self.on_change)
+            ChangeTracker.all_changes.append(self.on_change)
 
-    def on_change(self, _):
+    def on_change(self, *_):
         prev_gamestate = self.current.copy()
         self.history.append(prev_gamestate)
 
@@ -86,29 +104,15 @@ class GameState:
         return sorted([c for c in self.cards if zone.contains(c)],
         key=lambda card: card.zone.position)
 
-class Grave(Zone):
-    pass
-
-class Hand(Zone):
-    pass
-
-class Deck(Zone):
-    pass
-
-class Field(Zone):
-    pass
-
-class Stack(Zone):
-    pass
-
-class Any(Zone):
-    pass
 
 class ChangeTracker:
 
-    changes: Dict[Tuple[Zone,Zone],Callable[[Any,Zone,Zone],None]] = defaultdict(list)
-    change_from = defaultdict(list)
-    change_to = defaultdict(list)
+    all_changes = []
+
+    def __init__(self):
+        self.changes = defaultdict(list)
+        self.change_from = defaultdict(list)
+        self.change_to = defaultdict(list)
 
     def __set_name__(self,owner, name):
         self.private = f"_{name}"
@@ -118,35 +122,44 @@ class ChangeTracker:
 
     def __set__(self, obj, value):
         old_value = getattr(obj, self.private,None)
+
+        old_kind = type(old_value)
+        new_kind = type(new_value)
         if value != old_value:
-            for callback in ChangeTracker.changes[(type(old_value),type(value))]:
-                callback(obj, obj._zone, value)
-            for callback in (
-                    ChangeTracker.change_from[type(old_value)] + 
-                    ChangeTracker.change_from[Any] + 
-                    ChangeTracker.change_to[type(value)]):
-                callback(obj)
+        for callback in self.changes[(old_kind,new_kind)]:
+            callback(obj, old_value, value)
+        for callback in (
+                self.change_from[old_kind] + 
+                self.change_from[Any] + 
+                self.change_to[new_kind]):
+            callback(obj)
+        for callback in ChangeTracker.all_changes:
+            callback(obj, old_value, value)
         setattr(obj,self.private,value)
 
-    @classmethod
-    def on_draw(cls, callback):
-        cls.changes[(Deck, Hand)].append(callback)
     
-    @classmethod
-    def on_discard(cls, callback):
-        cls.changes[(Hand,Grave)].append(callback)
+    def on_draw(self, callback):
+        self.changes[(Deck, Hand)].append(callback)
+    
+    
+    def on_discard(self, callback):
+        self.changes[(Hand,Grave)].append(callback)
 
-    @classmethod
-    def on_cast(cls, callback):
-        cls.changes[(Hand, Stack)].append(callback)
+    
+    def on_cast(self, callback):
+        self.changes[(Hand, Stack)].append(callback)
 
-    @classmethod
-    def on_enters(cls, callback): 
-        cls.change_to[Field].append(callback)
+    
+    def on_enters(self, callback): 
+        self.change_to[Field].append(callback)
+    
+    
+    def on_leaves(self, callback):
+        self.change_from[Field].append(callback)
 
-    @classmethod
-    def on_change(cls, callback):
-        cls.change_from[Any].append(callback)
+    
+    def on_change(self, callback):
+        self.change_from[Any].append(callback)
 
 class CardType(str, Enum):
     Land = "land"
@@ -160,6 +173,17 @@ class Card:
         self.types = set(types)
         # need to dodge the change tracker here
         self.__dict__['zone'] = zone
+        self.permanent = None
+        self.zone.on_enters(Card.make_permanent)
+        self.zone.on_leaves(Card.del_permanent)
+
+    all_changes = defaultdict(list) 
+    
+    def make_permanent(self):
+        self.permanent = Permanent(self)
+
+    def del_permanent(self):
+        self.permanent = None
 
     def copy(self):
         return Card(self.name, self.types, self.zone.copy())
@@ -170,4 +194,30 @@ class Card:
     def __repr__(self):
         return str(self)
 
-Forest = Card("Forest",[CardType.Land])
+def forest():
+    return Card("Forest",[CardType.Land])
+
+
+class Permanent:
+    tapped = ChangeTracker()
+
+    def __init__(self, card: Card, tapped: bool = False):        
+        self.card = card
+        self.tap_untap(tapped, False)
+        self.summoning_sick = CardType.Creature in self.card.types 
+
+    def tap_untap(self, tapped: bool, record=True):
+        if record:
+            self.tapped = tapped
+        else:
+            self.__dict__['tapped'] = tapped
+          
+        
+Cost = TypeVar('Cost')
+Effect = TypeVar('Effect')
+
+
+@dataclass
+class Activated:
+    cost: Cost
+    effect: Effect

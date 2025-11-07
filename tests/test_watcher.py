@@ -36,3 +36,9 @@ def test_history():
         game.draw(0)
         assert len(game.history) == i+1
         assert len(game.current.get_zone(mtg.Deck(owner=0))) == len(deck) - (i+1)
+
+def test_play():
+    forest = mtg.forest()
+    game = mtg.Game([[forest]], track_history=True)
+    game.play(forest)
+    assert forest.permanent is not None
