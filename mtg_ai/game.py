@@ -166,9 +166,18 @@ class CardType(str, Enum):
     Creature = "creature"
 
 class Card:
+
+    @dataclass
+    class Abilities:
+        static: list = []
+        triggered: list = []
+        activated: list = []
+
+
     zone = ChangeTracker()
 
-    def __init__(self,name, types: Iterable[CardType]=(), zone:Optional[Zone]=None):
+    def __init__(self,name, types: Iterable[CardType]=(),
+                 abilities: Optional[Abilities] = None, zone:Optional[Zone]=None):
         self.name = name
         self.types = set(types)
         # need to dodge the change tracker here
@@ -176,9 +185,19 @@ class Card:
         self.permanent = None
         self.zone.on_enters(Card.make_permanent)
         self.zone.on_leaves(Card.del_permanent)
+        self.abilities = abilities or Abilities()
 
     all_changes = defaultdict(list) 
+
+    def set_abilities(self, static=(), triggered=(), activated=()):
+        self.abilities = self.Abilities(
+            static=list(static),
+             triggered=list(triggered),
+             activated=list(activated)
+        )
+        return self
     
+            
     def make_permanent(self):
         self.permanent = Permanent(self)
 
@@ -193,10 +212,6 @@ class Card:
 
     def __repr__(self):
         return str(self)
-
-def forest():
-    return Card("Forest",[CardType.Land])
-
 
 class Permanent:
     tapped = ChangeTracker()
@@ -213,11 +228,3 @@ class Permanent:
             self.__dict__['tapped'] = tapped
           
         
-Cost = TypeVar('Cost')
-Effect = TypeVar('Effect')
-
-
-@dataclass
-class Activated:
-    cost: Cost
-    effect: Effect
