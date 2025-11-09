@@ -1,8 +1,10 @@
 from mtg_ai import game, abilities
 
-def forest():
-    card = game.Card("Forest",
-                     (game.CardType.Land,)
+def forest(game_state: game.GameState):
+    card = abilities.Card(
+                          "Forest",
+                     (abilities.CardType.Land,),
+                     game_state=game_state
                      )
     card.set_abilities(
                      activated=[

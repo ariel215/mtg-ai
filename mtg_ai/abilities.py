@@ -1,44 +1,100 @@
-from dataclasses import dataclass
-from typing import Protocol, List, Union
+from dataclasses import dataclass, field
+from typing import Protocol, List, Union, Iterable, Optional
 from collections.abc import Callable
+from collections import defaultdict
+from enum import Enum
+from mtg_ai.game import GameObject, GameState, Zone, ObjRef, Mana, Action
 
-@dataclass
-class Mana:
-    white: int = 0
-    blue: int = 0
-    black: int = 0
-    red: int = 0
-    green: int = 0
-    generic: int = 0
-    colorless: int = 0
 
-    def __iadd__(self, other):
-        for field in ('white','blue','black','red','green','generic','colorless'):
-            setattr(self,field,getattr(other,field))
+
+class CardType(str, Enum):
+    Land = "land"
+    Creature = "creature"
+
+class Card(GameObject):
+
+    @dataclass
+    class Abilities:
+        static: list = field(default_factory=list)
+        triggered: list = field(default_factory=list)
+        activated: list = field(default_factory=list)
+
+    def __init__(self, name,
+                 types: Iterable[CardType]=(),
+                 abilities: Optional[Abilities] = None,
+                 zone:Optional[Zone]=None,
+                 permanent: bool = False,
+                 tapped: bool = False,
+                 game_state: Optional[GameState] = None,
+             ):
+
+        super().__init__(game_state)
+        self.zone = zone 
+        self.name = name
+        self.types = set(types)
+        self.permanent = permanent
+        self.tapped = tapped
+        self.abilities = abilities or Card.Abilities()
+
+
+    def set_abilities(self, static=(), triggered=(), activated=()):
+        self.abilities = self.Abilities(
+            static=list(static),
+             triggered=list(triggered),
+             activated=list(activated)
+        )
         return self
-        
+    
 
-class Action(Protocol):
-    def can(self, gamestate):
-        ...
+    @property
+    def summoning_sick(self):
+        return self.permanent and self.permanent.summoning_sick
+            
+    def make_permanent(self):
+        self.permanent = True
 
-    def do(self, gamestate):
-        ...
+    def del_permanent(self):
+        self.permanent = False
 
+    def copy(self):
+        return Card(name=self.name,
+                    types=self.types,
+                    abilities=self.abilities,
+                    zone=self.zone,
+                    permanent=self.permanent,
+                    tapped=self.tapped,
+                    game_state=self.game_state)
+
+    def __str__(self):
+        return f"[{self.name}@{self.zone}]"
+
+    def __repr__(self):
+        return str(self)
+
+
+class Permanent:
+
+    def __init__(self, card: Card, tapped: bool = False):        
+        self.card = card
+        self.tapped = tapped 
+        self.summoning_sick = CardType.Creature in self.card.types 
+          
 
 class TapSymbol:
-    def __init__(self, target):
+
+    def __init__(self, target: Card):
         """
         Tap a permanent using the tap symbol.
         Target: the permanent to be tapped
         """
-        self.card =target
+        self.card = target
     
-    def can(self, _gamestate):
-        return not (self.card.tapped or self.card.summoning_sick)
+    def can(self, gamestate):
+        card = gamestate.get(self.card)
+        return not card.tapped
 
-    def do(self, _gamestate):
-        self.card.tapped = True
+    def do(self, gamestate):
+        gamestate.get(self.card).tapped = True
 
 
 class AddMana:
@@ -54,17 +110,19 @@ class AddMana:
         else:
             mana = self.mana(gamestate)
             gamestate.mana_pool += mana
-         
+
+
 class ActivatedAbility:
     def __init__(self, costs: List[Action], effects: List[Action]):
         self.costs = costs
         self.effects = effects
 
-    def can(self, gamestate):
-        return all(cost.can(gamestate) for cost in self.costs)
+    def can(self, game_state: GameState):
+        return all(cost.can(game_state) for cost in self.costs)
 
-    def do(self, gamestate):
+    def do(self, game_state):
         for cost in self.costs:
-            cost.do(gamestate)
+            cost.do(game_state)
         for effect in self.effects:
-            effect.do(gamestate)
+            effect.do(game_state)
+        return game_state

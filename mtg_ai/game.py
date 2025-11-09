@@ -1,7 +1,5 @@
-from mtg_ai.abilities import Mana
-
 from dataclasses import dataclass, field
-from typing import TypeVar, Optional, List, Tuple, Dict, Any, Iterable
+from typing import Protocol, TypeVar, Optional, List, Tuple, Dict, Any, Iterable
 from collections.abc import Callable
 from collections import defaultdict
 from enum import Enum
@@ -55,191 +53,146 @@ class Game:
             for position in range(len(deck)):
                 deck[position].zone = Deck(owner=p, position=position)
         cards = [c for deck in decks for c in deck]
-        self.current = GameState(
+        self.root = GameState(
             players, cards, [],
             0,0
         )
-        if track_history:
-            ChangeTracker.all_changes.append(self.on_change)
-
-    def on_change(self, *_):
-        prev_gamestate = self.current.copy()
-        self.history.append(prev_gamestate)
-
+        self.track_history =track_history
+        
     @property
     def active(self):
-        return self.current.active
+        return self.root.active
 
     @property
     def priority(self):
-        return self.current.priority
+        return self.root.priority
 
-    def draw(self, player: Player):
-        deck = self.current.get_zone(Deck(owner=player))
+class GameState:
+
+    def __init__(self,players: List[Player], mana_pool: Optional['Mana']=None):
+        self.objects = {}
+        self.players = players
+        self.mana_pool = mana_pool or Mana()
+        self.parent = None
+        self.children = []
+        
+            
+    def copy(self) -> 'GameState':
+        new_gamestate = GameState(self.players,self.mana_pool.copy())
+        uids = [uid for uid in self.objects]
+        for uid in uids:
+            self.objects[uid].move_to(new_gamestate)
+        self.children.append(new_gamestate)
+        new_gamestate.parent = self
+        return new_gamestate
+
+    def in_zone(self, zone: Zone)->List['GameObject']:
+        return sorted([c for c in self.objects.values() if zone.contains(c)],
+        key=lambda card: card.zone.position)
+
+    def get(self, object):
+        return self.objects[object.uid]
+
+    def draw(self, player: Player)->'GameState':
+        deck = self.in_zone(Deck(owner=player))
         top_card = deck.pop()
+        new_state = self.copy()
+        top_card = new_state.get(top_card)
         top_card.zone = Hand(owner=player)
+        return new_state
 
-    def play(self, card: 'Card'):
+    def play(self, card: 'Card')->'GameState':
+        new_state = self.copy()
+        card = new_state.get(card)
         card.zone = Field(owner=card.zone.owner)
         card.make_permanent()
+        return new_state
+    
+    def take_action(self, action)->'GameState':
+        new_state = self.copy()
+        action.do(new_state)
+        return new_state
 
-    def cast(self, card):
-        card.zone = Stack(owner=None,position=len(self.current.stack))
-        self.current.stack.append(card)
+class GameObject:
+    maxid = 0
+    def __init__(self, game_state: GameState, uid: Optional[int]=None):
+        self.game_state = game_state
+        if uid is None:
+            self.uid = GameObject.maxid
+            GameObject.maxid += 1
+        else:
+            self.uid = uid
+        game_state.objects[self.uid] = self
+
+    def move_to(self, new_gamestate: GameState):
+        cpy = self.copy()
+        tmp_uid = cpy.uid
+        cpy.game_state = new_gamestate
+        cpy.uid = self.uid
+        new_gamestate.objects[self.uid] = cpy
+        del self.game_state.objects[tmp_uid]
+        return cpy
+    
+    def copy(self) -> 'GameObject':
+        raise NotImplemented
+
+class ObjRef:
+
+    def __set_name__(self, obj, name):
+        self.private_name = f"_{name}"
+        self.public_name = name
+
+    def __set__(self, owner: GameObject, value: GameObject):
+        if hasattr(value, '__iter__'):
+            ids = [v.uid for v in value]
+            setattr(owner, self.private_name, ids)
+        else:
+            id = value.uid
+            setattr(owner, self.private_name, id)
+            owner.game_state = value.game_state 
+        
+
+    def __get__(self, owner: GameObject, owner_type):
+        uids = getattr(owner,self.private_name)
+        if isinstance(uids, list):
+            return [
+                owner.game_state.objects[uid]
+                for uid in uids 
+            ]
+        else: 
+            return owner.game_state.objects[uid]
+
+
+class Action(Protocol):
+    def can(self, gamestate):
+        ...
+
+    def do(self, gamestate):
+        ...
 
 
 @dataclass
-class GameState: 
-    players: List[Player]
-    cards: List['Card']
-    stack: List[StackObject]
-    active: int
-    priority: int
-    mana_pool: Mana = field(default_factory=Mana)
-    
-    def copy(self):
-        # this is probably too neat
-        cards = [card.copy() for card in self.cards]
-        stack = [obj.copy() for obj in self.stack]
+class Mana:
+    white: int = 0
+    blue: int = 0
+    black: int = 0
+    red: int = 0
+    green: int = 0
+    generic: int = 0
+    colorless: int = 0
 
-        return GameState(self.players, cards, stack, self.active, self.priority,
-                         self.mana_pool)
-
-    def get_zone(self, zone: Zone):
-        return sorted([c for c in self.cards if zone.contains(c)],
-        key=lambda card: card.zone.position)
-
-
-class ChangeTracker:
-
-    all_changes = []
-
-    def __init__(self):
-        self.changes = defaultdict(list)
-        self.change_from = defaultdict(list)
-        self.change_to = defaultdict(list)
-
-    def __set_name__(self,owner, name):
-        self.private = f"_{name}"
-
-    def __get__(self, obj, _objtype):
-        return getattr(obj,self.private)
-
-    def __set__(self, obj, value):
-        old_value = getattr(obj, self.private,None)
-
-        old_kind = type(old_value)
-        new_kind = type(new_value)
-        if value != old_value:
-            for callback in self.changes[(old_kind,new_kind)]:
-                callback(obj, old_value, value)
-            for callback in (
-                    self.change_from[old_kind] + 
-                    self.change_from[Any] + 
-                    self.change_to[new_kind]):
-                callback(obj)
-            for callback in ChangeTracker.all_changes:
-                callback(obj, old_value, value)
-            setattr(obj,self.private,value)
-
-    
-    def on_draw(self, callback):
-        self.changes[(Deck, Hand)].append(callback)
-    
-    
-    def on_discard(self, callback):
-        self.changes[(Hand,Grave)].append(callback)
-
-    
-    def on_cast(self, callback):
-        self.changes[(Hand, Stack)].append(callback)
-
-    
-    def on_enters(self, callback): 
-        self.change_to[Field].append(callback)
-    
-    
-    def on_leaves(self, callback):
-        self.change_from[Field].append(callback)
-
-    
-    def on_change(self, callback):
-        self.change_from[Any].append(callback)
-
-class CardType(str, Enum):
-    Land = "land"
-    Creature = "creature"
-
-class Card:
-
-    @dataclass
-    class Abilities:
-        static: list = field(default_factory=list)
-        triggered: list = field(default_factory=list)
-        activated: list = field(default_factory=list)
-
-
-
-    def __init__(self,name, types: Iterable[CardType]=(),
-                 abilities: Optional[Abilities] = None, zone:Optional[Zone]=None):
-        self.zone = zone 
-        self.name = name
-        self.types = set(types)
-        # need to dodge the change tracker here
-        self.__dict__['zone'] = zone
-        self.permanent = None
-        self.abilities = abilities or Card.Abilities()
-
-    all_changes = defaultdict(list) 
-
-    def set_abilities(self, static=(), triggered=(), activated=()):
-        self.abilities = self.Abilities(
-            static=list(static),
-             triggered=list(triggered),
-             activated=list(activated)
-        )
+    def __iadd__(self, other):
+        for field in ('white','blue','black','red','green','generic','colorless'):
+            setattr(self,field,getattr(other,field))
         return self
-    
-
-    @property
-    def tapped(self):
-        return self.permanent and self.permanent.tapped
-
-    @tapped.setter
-    def tapped(self, obj):
-        if self.permanent:
-            self.permanent.tapped = obj
-
-    @property
-    def summoning_sick(self):
-        return self.permanent and self.permanent.summoning_sick
-            
-    def make_permanent(self):
-        self.permanent = Permanent(self)
-
-    def del_permanent(self):
-        self.permanent = None
-
-    def copy(self):
-        return Card(self.name, self.types, self.zone.copy())
-
-    def __str__(self):
-        return f"[{self.name}@{self.zone}]"
-
-    def __repr__(self):
-        return str(self)
-
-class Permanent:
-
-    def __init__(self, card: Card, tapped: bool = False):        
-        self.card = card
-        self.tapped = tapped 
-        self.summoning_sick = CardType.Creature in self.card.types 
-
-    def tap_untap(self, tapped: bool, record=True):
-        if record:
-            self.tapped = tapped
-        else:
-            self.__dict__['tapped'] = tapped
-          
         
+    def copy(self):
+        return Mana(
+            self.white,
+            self.blue,
+            self.black,
+            self.red,
+            self.green,
+            self.generic,
+            self.colorless
+        )
