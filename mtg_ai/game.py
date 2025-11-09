@@ -1,4 +1,6 @@
-from dataclasses import dataclass
+from mtg_ai.abilities import Mana
+
+from dataclasses import dataclass, field
 from typing import TypeVar, Optional, List, Tuple, Dict, Any, Iterable
 from collections.abc import Callable
 from collections import defaultdict
@@ -77,8 +79,9 @@ class Game:
         top_card = deck.pop()
         top_card.zone = Hand(owner=player)
 
-    def play(self, card):
+    def play(self, card: 'Card'):
         card.zone = Field(owner=card.zone.owner)
+        card.make_permanent()
 
     def cast(self, card):
         card.zone = Stack(owner=None,position=len(self.current.stack))
@@ -92,13 +95,15 @@ class GameState:
     stack: List[StackObject]
     active: int
     priority: int
+    mana_pool: Mana = field(default_factory=Mana)
     
     def copy(self):
         # this is probably too neat
         cards = [card.copy() for card in self.cards]
         stack = [obj.copy() for obj in self.stack]
 
-        return GameState(self.players, cards, stack, self.active, self.priority)
+        return GameState(self.players, cards, stack, self.active, self.priority,
+                         self.mana_pool)
 
     def get_zone(self, zone: Zone):
         return sorted([c for c in self.cards if zone.contains(c)],
@@ -126,16 +131,16 @@ class ChangeTracker:
         old_kind = type(old_value)
         new_kind = type(new_value)
         if value != old_value:
-        for callback in self.changes[(old_kind,new_kind)]:
-            callback(obj, old_value, value)
-        for callback in (
-                self.change_from[old_kind] + 
-                self.change_from[Any] + 
-                self.change_to[new_kind]):
-            callback(obj)
-        for callback in ChangeTracker.all_changes:
-            callback(obj, old_value, value)
-        setattr(obj,self.private,value)
+            for callback in self.changes[(old_kind,new_kind)]:
+                callback(obj, old_value, value)
+            for callback in (
+                    self.change_from[old_kind] + 
+                    self.change_from[Any] + 
+                    self.change_to[new_kind]):
+                callback(obj)
+            for callback in ChangeTracker.all_changes:
+                callback(obj, old_value, value)
+            setattr(obj,self.private,value)
 
     
     def on_draw(self, callback):
@@ -169,23 +174,21 @@ class Card:
 
     @dataclass
     class Abilities:
-        static: list = []
-        triggered: list = []
-        activated: list = []
+        static: list = field(default_factory=list)
+        triggered: list = field(default_factory=list)
+        activated: list = field(default_factory=list)
 
 
-    zone = ChangeTracker()
 
     def __init__(self,name, types: Iterable[CardType]=(),
                  abilities: Optional[Abilities] = None, zone:Optional[Zone]=None):
+        self.zone = zone 
         self.name = name
         self.types = set(types)
         # need to dodge the change tracker here
         self.__dict__['zone'] = zone
         self.permanent = None
-        self.zone.on_enters(Card.make_permanent)
-        self.zone.on_leaves(Card.del_permanent)
-        self.abilities = abilities or Abilities()
+        self.abilities = abilities or Card.Abilities()
 
     all_changes = defaultdict(list) 
 
@@ -197,6 +200,19 @@ class Card:
         )
         return self
     
+
+    @property
+    def tapped(self):
+        return self.permanent and self.permanent.tapped
+
+    @tapped.setter
+    def tapped(self, obj):
+        if self.permanent:
+            self.permanent.tapped = obj
+
+    @property
+    def summoning_sick(self):
+        return self.permanent and self.permanent.summoning_sick
             
     def make_permanent(self):
         self.permanent = Permanent(self)
@@ -214,11 +230,10 @@ class Card:
         return str(self)
 
 class Permanent:
-    tapped = ChangeTracker()
 
     def __init__(self, card: Card, tapped: bool = False):        
         self.card = card
-        self.tap_untap(tapped, False)
+        self.tapped = tapped 
         self.summoning_sick = CardType.Creature in self.card.types 
 
     def tap_untap(self, tapped: bool, record=True):

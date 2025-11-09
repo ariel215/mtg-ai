@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Protocol, List
+from typing import Protocol, List, Union
 from collections.abc import Callable
 
 @dataclass
@@ -11,6 +11,12 @@ class Mana:
     green: int = 0
     generic: int = 0
     colorless: int = 0
+
+    def __iadd__(self, other):
+        for field in ('white','blue','black','red','green','generic','colorless'):
+            setattr(self,field,getattr(other,field))
+        return self
+        
 
 class Action(Protocol):
     def can(self, gamestate):

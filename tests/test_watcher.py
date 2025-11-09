@@ -1,4 +1,6 @@
 import mtg_ai.game as mtg
+import mtg_ai.cards as cards
+
 
 def test_watcher():
     prev = len(mtg.ChangeTracker.changes[(mtg.Deck, mtg.Hand)])
@@ -38,7 +40,7 @@ def test_history():
         assert len(game.current.get_zone(mtg.Deck(owner=0))) == len(deck) - (i+1)
 
 def test_play():
-    forest = mtg.forest()
+    forest = cards.forest()
     game = mtg.Game([[forest]], track_history=True)
     game.play(forest)
     assert forest.permanent is not None
