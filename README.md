@@ -101,9 +101,42 @@ immutable.
 But G1.get(a).x == G1.get(a.x) == a_new.x == b_new. We can easily track objects
 between game states as they change.  
 
-(Minor ergonomics question: does it make more sense to have
-GameState.get or GameObject.find_in?)
+## Actions, Choices and the Stack
+
+Actions are things that modify the game state. since we're interested
+in exploring the game space, we need to think about not only
+actions in the singular but sets of possible actions. These
+sets can arise either from analyzing the game state, when
+a player has priority, or because a card calls for a choice to be
+made (Giant Growth, Collected Company, fetch lands).
+
+Consider: you control two creatures and go to cast Giant Growth.
+You are asked to chose a target before putting the card on the stack.
+What does this look like?
 
 
+> - Ask PlayCard(Giant Growth): Can I do this?
+    - Can I pay all costs?
+      * PlayCard: Is there more mana in the pool than in the card's cost? 
+    - Can I make all choices?
+      * PlayCard: choose targets for all effects on the card, if any
+      - Ask the card's effect: what can you target?
+      * {Suntail Hawk, Grizzly Bears}
+  - if so: do it
+    - pay cost
+    - select an element of the choice set
+    - do the effect to the gamestate with the choice made
+      * gamestate.cast(giant growth, targets=[grizzly bears])
+        * giant_growth.set(targets=[grizzly_bears])
 
+Conceptually, selecting targets is just another kind of cost, in that it's
+a thing that needs to be possible before you can take the action. Similarly,
+for some kinds of costs (e.g. discarding a card, delving) there might be
+more than one way to pay it.
 
+So really the question we need to ask is: is there at least one way to do
+everything we need to do?
+if so, we do it with the selected choice set
+
+so a Choice here is a collection of some kind, probably labelled?
+And a ChoiceSet is what it sounds like, a set of choices.    
