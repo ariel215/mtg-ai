@@ -1,4 +1,4 @@
-from mtg_ai import cards, game
+from mtg_ai import cards, game, abilities
 
 def test_forest():
     g0 = game.GameState([0])
@@ -26,3 +26,21 @@ def test_forest():
 
     assert g1.mana_pool.green == 0
     assert not g1.get(f1).tapped
+
+
+def test_cast():
+    g0 = game.GameState([0])
+    [f1, f2, vt] = deck = [cards.forest(g0), cards.forest(g0), cards.vine_trellis(g0)]
+    vt.zone = game.Hand(0)
+    f1.zone = game.Field(0)
+    f2.zone = game.Field(0)
+
+    g1 = g0.take_action(f1.abilities.activated[0])
+    g2 = g1.take_action(f2.abilities.activated[0])
+
+    g3 = g2.take_action(abilities.CastSpell(vt))
+
+    vt = g3.get(vt)
+    assert isinstance(vt.zone, game.Stack)
+    assert g3.mana_pool.green == 0
+

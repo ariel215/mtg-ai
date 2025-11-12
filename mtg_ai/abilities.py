@@ -7,82 +7,8 @@ from mtg_ai.game import GameObject, GameState, Zone, ObjRef, Mana, Action
 
 
 
-class CardType(str, Enum):
-    Land = "land"
-    Creature = "creature"
-
-class Card(GameObject):
-
-    @dataclass
-    class Abilities:
-        static: list = field(default_factory=list)
-        triggered: list = field(default_factory=list)
-        activated: list = field(default_factory=list)
-
-    def __init__(self, name,
-                 types: Iterable[CardType]=(),
-                 abilities: Optional[Abilities] = None,
-                 zone:Optional[Zone]=None,
-                 permanent: bool = False,
-                 tapped: bool = False,
-                 game_state: Optional[GameState] = None,
-             ):
-
-        super().__init__(game_state)
-        self.zone = zone 
-        self.name = name
-        self.types = set(types)
-        self.permanent = permanent
-        self.tapped = tapped
-        self.abilities = abilities or Card.Abilities()
-
-
-    def set_abilities(self, static=(), triggered=(), activated=()):
-        self.abilities = self.Abilities(
-            static=list(static),
-             triggered=list(triggered),
-             activated=list(activated)
-        )
-        return self
-    
-
-    @property
-    def summoning_sick(self):
-        return self.permanent and self.permanent.summoning_sick
-            
-    def make_permanent(self):
-        self.permanent = True
-
-    def del_permanent(self):
-        self.permanent = False
-
-    def copy(self):
-        return Card(name=self.name,
-                    types=self.types,
-                    abilities=self.abilities,
-                    zone=self.zone,
-                    permanent=self.permanent,
-                    tapped=self.tapped,
-                    game_state=self.game_state)
-
-    def __str__(self):
-        return f"[{self.name}@{self.zone}]"
-
-    def __repr__(self):
-        return str(self)
-
-
-class Permanent:
-
-    def __init__(self, card: Card, tapped: bool = False):        
-        self.card = card
-        self.tapped = tapped 
-        self.summoning_sick = CardType.Creature in self.card.types 
-          
-
 class TapSymbol:
-
-    def __init__(self, target: Card):
+    def __init__(self, target):
         """
         Tap a permanent using the tap symbol.
         Target: the permanent to be tapped
@@ -113,16 +39,74 @@ class AddMana:
 
 
 class ActivatedAbility:
-    def __init__(self, costs: List[Action], effects: List[Action]):
+    def __init__(self, costs: List[Action], effects: List[Action],
+                 uses_stack: bool = False):
+        # todo: change default for activated abilities to use stack
+        # once fully implemented
         self.costs = costs
         self.effects = effects
-
+        self.uses_stack = uses_stack
+        
     def can(self, game_state: GameState):
         return all(cost.can(game_state) for cost in self.costs)
 
     def do(self, game_state):
         for cost in self.costs:
             cost.do(game_state)
+        if self.uses_stack: 
+            new_ability = StackAbility(game_state=game_state,
+                                   effects=self.effects,
+                                   source=self,
+                                   )
+            game_state.stack(new_ability)
         for effect in self.effects:
             effect.do(game_state)
+        return game_state
+
+class StackAbility(GameObject):
+    def __init__(self,game_state: GameState,
+                 source,
+                 effects: List[Action]):
+        self.zone = None 
+        super().__init__(game_state)
+        game_state.stack(self)
+        self.source = source
+        self.effects = effects
+
+    def copy(self):
+        return StackAbility(
+            game_state=self.game_state,
+            source = self.source,
+            effects = self.effects
+        )
+        
+    def can(self, game_state):
+        # pinky promise to only try when it's on top of the stack
+        return True
+        
+    def do(self,game_state):
+        for effect in  self.effects:
+            effect.do(game_state)
+        return game_state
+
+
+class CastSpell:
+    def __init__(self,card):
+        self.card = card
+
+    def can(self, game_state: GameState):
+        card = game_state.get(self.card)
+        card_zone = card.zone
+        if not isinstance(card_zone, Hand):
+            return False
+
+        if card_zone.owner != game_state.priority:
+            return False
+
+        return card.cost <= game_state.mana_pool
+
+    def do(self, game_state: GameState):
+        card = game_state.get(self.card)
+        game_state.mana_pool -= card.cost
+        game_state.stack(card)
         return game_state

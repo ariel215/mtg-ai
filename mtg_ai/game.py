@@ -5,7 +5,7 @@ from collections import defaultdict
 from enum import Enum
 
 Player = int
-StackObject = TypeVar('StackObj')
+StackObject = TypeVar('StackObject')
 CardRef = int
 
 @dataclass
@@ -93,6 +93,14 @@ class GameState:
     def get(self, object):
         return self.objects[object.uid]
 
+    def stack(self, card):
+        stack = self.in_zone(Stack())
+        if stack:
+            top = max(obj.zone.position for obj in stack)
+            card.zone = Stack(position=top+1)
+        else:
+            card.zone = Stack(0)
+
     def draw(self, player: Player)->'GameState':
         deck = self.in_zone(Deck(owner=player))
         top_card = deck.pop()
@@ -178,14 +186,56 @@ class Mana:
     black: int = 0
     red: int = 0
     green: int = 0
-    generic: int = 0
     colorless: int = 0
+    generic: int = 0
 
     def __iadd__(self, other):
         for field in ('white','blue','black','red','green','generic','colorless'):
-            setattr(self,field,getattr(other,field))
+            current = getattr(self,field)
+            setattr(self,field,current + getattr(other, field))
         return self
+
+    def __isub__(self, other):
+        for field in ('white','blue','black','red','green','colorless'):
+            current = getattr(self,field)
+            setattr(self,field,current - getattr(other, field))
+        generic_cost = other.generic
+        while generic_cost > 0:
+            for field in  ('white','blue','black','red','green','colorless'):
+                value =getattr(self, field)
+                amt = min(generic_cost, value)
+                setattr(self, field, value - amt)
+                generic_cost -= amt 
+        return self
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return False
+
+        return all(
+            getattr(self, field) == getattr(other, field)
+             for field in ('white','blue','black','red','green','colorless','generic')
+        )
+
+
+    @property
+    def mana_value(self):
+        return sum(getattr(self, field)
+         for field in
+         ('white','blue','black','red','green','colorless','generic')
+     )
+
+    def __lt__(self, other):
+        if not isinstance(other, type(self)):
+            return False
         
+        for field in  ('white','blue','black','red','green','colorless'):
+            if getattr(self, field) >= getattr(other, field):
+                return False
+
+        return self.mana_value < other.mana_value        
+
+
     def copy(self):
         return Mana(
             self.white,
