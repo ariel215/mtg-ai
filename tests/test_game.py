@@ -1,4 +1,4 @@
-from mtg_ai import cards, game, abilities
+from mtg_ai import cards, game, actions
 
 def test_forest():
     g0 = game.GameState([0])
@@ -16,10 +16,9 @@ def test_forest():
     assert len(g1.objects) == 3
     assert isinstance(g1.get(f1).zone, game.Field)
     assert g1.get(f1).permanent is not None
-    assert t_add_g.can(g1)
-    # import pdb
-    # pdb.set_trace()
-    g2 = g1.take_action(t_add_g)    
+    choices = t_add_g.choices(g1)
+    assert choices
+    g2 = g1.take_action(t_add_g, choices[0])    
 
     assert g2.mana_pool.green == 1
     assert g2.get(f1).tapped
@@ -34,11 +33,12 @@ def test_cast():
     vt.zone = game.Hand(0)
     f1.zone = game.Field(0)
     f2.zone = game.Field(0)
-
-    g1 = g0.take_action(f1.abilities.activated[0])
-    g2 = g1.take_action(f2.abilities.activated[0])
-
-    g3 = g2.take_action(abilities.CastSpell(vt))
+    choices = f1.abilities.activated[0].choices(g0)[0] 
+    g1 = g0.take_action(f1.abilities.activated[0],choices)
+    g2 = g1.take_action(f2.abilities.activated[0],choices)
+    cast_spell = actions.CastSpell(vt)
+    choice = cast_spell.choices(g2)[0]
+    g3 = g2.take_action(actions.CastSpell(vt),choice)
 
     vt = g3.get(vt)
     assert isinstance(vt.zone, game.Stack)

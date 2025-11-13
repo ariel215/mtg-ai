@@ -3,8 +3,8 @@ from typing import Protocol, List, Union, Iterable, Optional
 from collections.abc import Callable
 from collections import defaultdict
 from enum import Enum
-from mtg_ai.game import GameObject, GameState, Zone, ObjRef, Mana, Action
-
+from mtg_ai.game import GameObject, GameState, Zone, ObjRef, Mana, Action, Choice, ChoiceSet, Hand
+from itertools import product
 
 
 class TapSymbol:
@@ -15,9 +15,9 @@ class TapSymbol:
         """
         self.card = target
     
-    def can(self, gamestate):
+    def choices(self, gamestate):
         card = gamestate.get(self.card)
-        return not card.tapped
+        return [] if card.tapped else [{}]
 
     def do(self, gamestate):
         gamestate.get(self.card).tapped = True
@@ -27,8 +27,8 @@ class AddMana:
     def __init__(self,mana: Union[Mana,Callable[['GameState'],Mana]]):
         self.mana = mana
 
-    def can(self, _gamestate):
-        return True
+    def choices(self, _gamestate) -> ChoiceSet:
+        return [{}]
 
     def do(self, gamestate):
         if isinstance(self.mana, Mana):
@@ -47,21 +47,24 @@ class ActivatedAbility:
         self.effects = effects
         self.uses_stack = uses_stack
         
-    def can(self, game_state: GameState):
-        return all(cost.can(game_state) for cost in self.costs)
+    def choices(self, game_state: GameState):
+        costs = product(*[cost.choices(game_state) for cost in self.costs])
+        effects = product(*[effect.choices(game_state) for effect in self.effects])
+        return [{'costs_choice': c, 'effects_choice': e} for (c,e) in product(costs, effects)]
 
-    def do(self, game_state):
-        for cost in self.costs:
-            cost.do(game_state)
+    def do(self, game_state, costs_choice, effects_choice):
+        for (cost, cc) in zip(self.costs, costs_choice):
+            cost.do(game_state,**cc)
         if self.uses_stack: 
             new_ability = StackAbility(game_state=game_state,
                                    effects=self.effects,
                                    source=self,
                                    )
             game_state.stack(new_ability)
-        for effect in self.effects:
-            effect.do(game_state)
-        return game_state
+        else:
+            for (effect, ec) in zip(self.effects, effects_choice):
+                effect.do(game_state, **ec)
+            return game_state
 
 class StackAbility(GameObject):
     def __init__(self,game_state: GameState,
@@ -80,13 +83,13 @@ class StackAbility(GameObject):
             effects = self.effects
         )
         
-    def can(self, game_state):
+    def choices(self, game_state):
         # pinky promise to only try when it's on top of the stack
-        return True
+        return product(effect.choices(game_state) for effect in self.effects)
         
-    def do(self,game_state):
-        for effect in  self.effects:
-            effect.do(game_state)
+    def do(self,game_state, choices):
+        for (choice,effect) in  zip(choices, self.effects):
+            effect.do(game_state,**choice)
         return game_state
 
 
@@ -94,19 +97,23 @@ class CastSpell:
     def __init__(self,card):
         self.card = card
 
-    def can(self, game_state: GameState):
+    def choices(self, game_state: GameState):
         card = game_state.get(self.card)
         card_zone = card.zone
         if not isinstance(card_zone, Hand):
-            return False
+            return []
 
-        if card_zone.owner != game_state.priority:
-            return False
+        # if card_zone.owner != game_state.priority:
+        #     return []
 
-        return card.cost <= game_state.mana_pool
+        if game_state.mana_pool.can_pay(card.cost):
+            # todo: compute all the ways to pay given the mana available
+            return [{'mana': card.cost}]
+        else:
+            return []
 
-    def do(self, game_state: GameState):
+    def do(self, game_state: GameState, mana: Mana):
         card = game_state.get(self.card)
-        game_state.mana_pool -= card.cost
+        game_state.mana_pool -= mana
         game_state.stack(card)
         return game_state

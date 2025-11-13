@@ -116,9 +116,10 @@ class GameState:
         card.make_permanent()
         return new_state
     
-    def take_action(self, action)->'GameState':
+    def take_action(self, action, choices: Dict[str, Any] | None = None)->'GameState':
+        choices = choices or {}
         new_state = self.copy()
-        action.do(new_state)
+        action.do(new_state, **choices)
         return new_state
 
 class GameObject:
@@ -170,12 +171,15 @@ class ObjRef:
         else: 
             return owner.game_state.objects[uid]
 
+T = TypeVar('T')
+type Choice[T] = Dict[str, T]
+type ChoiceSet[T] = List[Choice[T]]
 
 class Action(Protocol):
-    def can(self, gamestate):
+    def choices[T](self,gamestate) -> ChoiceSet[T]:
         ...
 
-    def do(self, gamestate):
+    def do[T](self, gamestate, **kwargs: Choice[T]):
         ...
 
 
@@ -208,6 +212,14 @@ class Mana:
                 generic_cost -= amt 
         return self
 
+    @property
+    def mana_value(self):
+        return sum(getattr(self, field)
+         for field in
+         ('white','blue','black','red','green','colorless','generic')
+     )
+
+
     def __eq__(self, other):
         if not isinstance(other, type(self)):
             return False
@@ -217,24 +229,16 @@ class Mana:
              for field in ('white','blue','black','red','green','colorless','generic')
         )
 
+    def can_pay(self, other)->bool:
+        """
+        Returns whether `self` can pay the cost `other` 
+        """
 
-    @property
-    def mana_value(self):
-        return sum(getattr(self, field)
-         for field in
-         ('white','blue','black','red','green','colorless','generic')
-     )
-
-    def __lt__(self, other):
-        if not isinstance(other, type(self)):
-            return False
-        
         for field in  ('white','blue','black','red','green','colorless'):
-            if getattr(self, field) >= getattr(other, field):
+            if getattr(self, field) < getattr(other, field):
                 return False
 
-        return self.mana_value < other.mana_value        
-
+        return self.mana_value >= other.mana_value        
 
     def copy(self):
         return Mana(

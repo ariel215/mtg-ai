@@ -1,4 +1,4 @@
-from mtg_ai import game, abilities
+from mtg_ai import game, actions
 from typing import Iterable, Optional
 from dataclasses import dataclass, field
 from enum import Enum
@@ -79,10 +79,10 @@ class Permanent:
         self.tapped = tapped 
         self.summoning_sick = CardType.Creature in self.card.types 
           
-def tap_mana(card,mana) -> abilities.ActivatedAbility:
-    return abilities.ActivatedAbility(
-        costs = [abilities.TapSymbol(card)],
-        effects=[abilities.AddMana(mana)]
+def tap_mana(card,mana) -> actions.ActivatedAbility:
+    return actions.ActivatedAbility(
+        costs = [actions.TapSymbol(card)],
+        effects=[actions.AddMana(mana)]
     )
 
 def forest(game_state: game.GameState):
