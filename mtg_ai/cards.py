@@ -1,4 +1,4 @@
-from mtg_ai import game, actions
+from mtg_ai import game, actions, getters, zone
 from typing import Iterable, Optional
 from dataclasses import dataclass, field
 from enum import Enum
@@ -7,6 +7,9 @@ from enum import Enum
 class CardType(str, Enum):
     Land = "land"
     Creature = "creature"
+    Instant = "instant"
+    Sorcery = "sorcery"
+    Artifact = "artifact"
 
 class Card(game.GameObject):
 
@@ -20,7 +23,7 @@ class Card(game.GameObject):
                  cost: Optional[game.Mana] = None,
                  types: Iterable[CardType]=(),
                  abilities: Optional[Abilities] = None,
-                 zone:Optional[game.Zone]=None,
+                 zone:Optional[zone.Zone]=None,
                  permanent: bool = False,
                  tapped: bool = False,
                  game_state: Optional[game.GameState] = None,
@@ -44,6 +47,9 @@ class Card(game.GameObject):
         )
         return self
     
+    def add_trigger(self, when: type(game.Action), condition, action: actions.Action):
+        when.triggers.append(actions.Trigger(condition=condition, action=action))
+        return self
 
     @property
     def summoning_sick(self):
@@ -100,3 +106,19 @@ def vine_trellis(game_state: game.GameState):
         activated=[tap_mana(vt,game.Mana(green=1))]
     )
     return vt
+
+
+def wall_of_omens(game_state: game.GameState):
+    wo = Card(
+        name="Wall of Omens",
+        cost = game.Mana(white=1, generic=1),
+        game_state=game_state
+    )
+
+    wo.add_trigger(
+        when=actions.Play,
+        condition=lambda ev: ev.source.uid == wo.uid,
+        action=actions.Draw(getters.Controller(wo))
+    )
+
+    return wo

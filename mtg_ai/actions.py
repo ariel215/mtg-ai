@@ -3,11 +3,41 @@ from typing import Protocol, List, Union, Iterable, Optional
 from collections.abc import Callable
 from collections import defaultdict
 from enum import Enum
-from mtg_ai.game import GameObject, GameState, Zone, ObjRef, Mana, Action, Choice, ChoiceSet, Hand
+from mtg_ai.game import GameObject, GameState, ObjRef, Mana, Action, Choice, ChoiceSet, Event
+from mtg_ai import zone
 from itertools import product
 
 
-class TapSymbol:
+class Draw(Action):
+    def __init__(self, player):
+        self.player = player
+
+    def choices(self, game_state):
+        player = getattr(self.player, 'get', None)
+        player = player(game_state) if player is not None else self.player
+        deck = game_state.in_zone(zone.Deck(owner=player))
+        if not deck:
+            return []
+        return [{'card': deck.pop()}]
+
+    def do(self, game_state,card):
+        card = game_state.get(card)
+        card.zone = zone.Hand(self.player)
+        return Event(self,card,None)
+
+class Play(Action):
+    def __init__(self, card):
+        self.card = card
+    
+    def choices(self, _gamestate):
+        return [{}] # todo: does the card need to make choices as it enters?
+    
+    def do(self, game_state):
+        card = game_state.get(self.card)
+        card.zone = zone.Field(owner=card.zone.owner)
+        return Event(action=self, source=card,cause=card)
+
+class TapSymbol(Action):
     def __init__(self, target):
         """
         Tap a permanent using the tap symbol.
@@ -21,10 +51,10 @@ class TapSymbol:
 
     def do(self, gamestate):
         gamestate.get(self.card).tapped = True
+        return Event(self)
 
-
-class AddMana:
-    def __init__(self,mana: Union[Mana,Callable[['GameState'],Mana]]):
+class AddMana(Action):
+    def __init__(self,mana: Union[Mana,Callable[[GameState],Mana]]):
         self.mana = mana
 
     def choices(self, _gamestate) -> ChoiceSet:
@@ -38,7 +68,7 @@ class AddMana:
             gamestate.mana_pool += mana
 
 
-class ActivatedAbility:
+class ActivatedAbility(Action):
     def __init__(self, costs: List[Action], effects: List[Action],
                  uses_stack: bool = False):
         # todo: change default for activated abilities to use stack
@@ -66,41 +96,48 @@ class ActivatedAbility:
                 effect.do(game_state, **ec)
             return game_state
 
-class StackAbility(GameObject):
+class Trigger:
+    def __init__(self, condition, action):
+        self.condition = condition
+        self.action = action
+
+    def stack(self,game_state: GameState, event):
+        return StackAbility(game_state, self.action)
+
+class StackAbility(GameObject, Action):
+    """
+    An ability that is on the stack, waiting to resolve
+    """
+
     def __init__(self,game_state: GameState,
-                 source,
-                 effects: List[Action]):
+                 effect: Action):
         self.zone = None 
         super().__init__(game_state)
         game_state.stack(self)
-        self.source = source
-        self.effects = effects
+        self.effect: Action = effect
 
     def copy(self):
         return StackAbility(
             game_state=self.game_state,
-            source = self.source,
-            effects = self.effects
+            effect=self.effect
         )
         
     def choices(self, game_state):
         # pinky promise to only try when it's on top of the stack
-        return product(effect.choices(game_state) for effect in self.effects)
+        return self.effect.choices(game_state) 
+
+    def do(self,game_state, **choices):
+        return self.effect.do(game_state,**choices)
         
-    def do(self,game_state, choices):
-        for (choice,effect) in  zip(choices, self.effects):
-            effect.do(game_state,**choice)
-        return game_state
 
-
-class CastSpell:
+class CastSpell(Action):
     def __init__(self,card):
         self.card = card
 
     def choices(self, game_state: GameState):
         card = game_state.get(self.card)
         card_zone = card.zone
-        if not isinstance(card_zone, Hand):
+        if not isinstance(card_zone, zone.Hand):
             return []
 
         # if card_zone.owner != game_state.priority:
@@ -116,4 +153,4 @@ class CastSpell:
         card = game_state.get(self.card)
         game_state.mana_pool -= mana
         game_state.stack(card)
-        return game_state
+        return Event(action=self,source=card,cause=card)

@@ -3,46 +3,36 @@ from typing import Protocol, TypeVar, Optional, List, Tuple, Dict, Any, Iterable
 from collections.abc import Callable
 from collections import defaultdict
 from enum import Enum
+from . import zone
 
 Player = int
 StackObject = TypeVar('StackObject')
-CardRef = int
 
-@dataclass
-class Zone:
-    owner: Optional[Player] = None
-    position: Optional[int] = None
+class Event:
+    def __init__(self, action, source=None, cause=None):
+        self.action = action 
+        self.source = source 
+        self.cause = cause
 
-    def contains(self, card):
-        return (
-            type(self) is type(card.zone) 
-            and self.owner == card.zone.owner
-            and (self.position is None or self.position == card.zone.position) 
-        )
-    
-    def __str__(self):
-        return f"{type(self)}({self.owner})[{self.position}]"
 
-    def copy(self):
-        return type(self)(self.owner, self.position)
+class EventFilter:
+    def matches(self, event: Event) -> bool:
+        return NotImplemented
 
-class Grave(Zone):
-    pass
+    def __and__(self, other) -> 'EventFilter':
+        new_filter = EventFilter()
+        def new_matches(filter, event):
+            return self.matches(event) and other.matches(event)
+        new_filter.matches = new_matches
+        return new_filter
 
-class Hand(Zone):
-    pass
+    def __or__(self, other) -> 'EventFilter':
+        new_filter = EventFilter()
+        def new_matches(filter, event):
+            return self.matches(event) and other.matches(event)
+        new_filter.matches = new_matches
+        return new_filter
 
-class Deck(Zone):
-    pass
-
-class Field(Zone):
-    pass
-
-class Stack(Zone):
-    pass
-
-class Any(Zone):
-    pass
 
 class Game:
     def __init__(self, decks: List[List['Card']], track_history: bool = False):
@@ -51,7 +41,7 @@ class Game:
         for p in players:
             deck = decks[p]
             for position in range(len(deck)):
-                deck[position].zone = Deck(owner=p, position=position)
+                deck[position].zone = zone.Deck(owner=p, position=position)
         cards = [c for deck in decks for c in deck]
         self.root = GameState(
             players, cards, [],
@@ -75,6 +65,7 @@ class GameState:
         self.mana_pool = mana_pool or Mana()
         self.parent = None
         self.children = []
+        self.triggers = [] # triggers waiting to go onto the stack
         
             
     def copy(self) -> 'GameState':
@@ -86,7 +77,7 @@ class GameState:
         new_gamestate.parent = self
         return new_gamestate
 
-    def in_zone(self, zone: Zone)->List['GameObject']:
+    def in_zone(self, zone: zone.Zone)->List['GameObject']:
         return sorted([c for c in self.objects.values() if zone.contains(c)],
         key=lambda card: card.zone.position)
 
@@ -94,33 +85,33 @@ class GameState:
         return self.objects[object.uid]
 
     def stack(self, card):
-        stack = self.in_zone(Stack())
+        stack = self.in_zone(zone.Stack())
         if stack:
             top = max(obj.zone.position for obj in stack)
-            card.zone = Stack(position=top+1)
+            card.zone = zone.Stack(position=top+1)
         else:
-            card.zone = Stack(0)
+            card.zone = zone.Stack(position=0)
 
-    def draw(self, player: Player)->'GameState':
-        deck = self.in_zone(Deck(owner=player))
-        top_card = deck.pop()
-        new_state = self.copy()
-        top_card = new_state.get(top_card)
-        top_card.zone = Hand(owner=player)
-        return new_state
+    def resolve_stack(self) -> 'GameState':
+        stack = self.in_zone(zone.Stack())
+        top = stack.pop()
+        choices = top.choices(self)
 
-    def play(self, card: 'Card')->'GameState':
-        new_state = self.copy()
-        card = new_state.get(card)
-        card.zone = Field(owner=card.zone.owner)
-        card.make_permanent()
-        return new_state
-    
+        return self.take_action(top, choices[0])
+
     def take_action(self, action, choices: Dict[str, Any] | None = None)->'GameState':
         choices = choices or {}
         new_state = self.copy()
-        action.do(new_state, **choices)
+        event = action.do(new_state, **choices)
+        new_state.triggers.extend(
+            (event,trigger) for trigger in action.triggers if trigger.condition(event)
+        )
         return new_state
+
+    def stack_triggers(self):
+        for (event, trigger) in self.triggers:
+            trigger.stack(self, event)
+        self.triggers.clear()
 
 class GameObject:
     maxid = 0
@@ -171,11 +162,15 @@ class ObjRef:
         else: 
             return owner.game_state.objects[uid]
 
+
 T = TypeVar('T')
 type Choice[T] = Dict[str, T]
 type ChoiceSet[T] = List[Choice[T]]
 
 class Action(Protocol):
+    def __init_subclass__(cls):
+        cls.triggers: List['Trigger'] = []
+
     def choices[T](self,gamestate) -> ChoiceSet[T]:
         ...
 

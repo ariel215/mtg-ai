@@ -140,3 +140,37 @@ if so, we do it with the selected choice set
 
 so a Choice here is a collection of some kind, probably labelled?
 And a ChoiceSet is what it sounds like, a set of choices.    
+
+## Triggers
+
+Triggers are effects that go onto the stack when "something happens".
+What constitutes "something"?  There are no real boundaries, but probably
+80% of triggers are triggered by a card changing zones: etbs, dying,
+leaving, drawing, discarding, milling, are all special cases of a card changing
+zones. The next 5-10% are delayed triggers that occur at the beginning of a
+step or phase, attacking, blocking, and becoming tapped or untapped.
+
+There's also two types of triggers: triggers that care about what the card
+they're on does, and triggers that care about what other cards do. Wall of Omens
+vs Arcades. The latter are only active while the card is in a specific zone,
+typically in play but sometimes in the graveyard.
+
+This is similar to static abilities: in both cases there's an effect that
+is live for as long as some permanent remains in play, either a static
+modifier or something watching for triggers. We need to be able to make sure
+its lifespan is tied to its card.
+
+The components of a triggered ability are: 
+- The action that triggers it
+  - This might be tied to a particular player or card or set of cards
+- The object perfoming the action
+- The object creating the trigger
+- The effect of the trigger
+
+Breaking down Wall of Omens'ability -- "When CARDNAME enters the battlefield, draw a card" in this way:
+- the triggering action is: a card enters the battlefield
+  - the action is triggered if: the card is CARDNAME
+- the object performing the action: CARDNAME
+- the object creating the trigger: CARDNAME
+- the effect: CARDNAME's owner draws a card
+
