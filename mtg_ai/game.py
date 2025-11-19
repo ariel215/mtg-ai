@@ -69,13 +69,13 @@ class GameState:
         
             
     def copy(self) -> 'GameState':
-        new_gamestate = GameState(self.players,self.mana_pool.copy())
+        new_game_state = GameState(self.players,self.mana_pool.copy())
         uids = [uid for uid in self.objects]
         for uid in uids:
-            self.objects[uid].move_to(new_gamestate)
-        self.children.append(new_gamestate)
-        new_gamestate.parent = self
-        return new_gamestate
+            self.objects[uid].move_to(new_game_state)
+        self.children.append(new_game_state)
+        new_game_state.parent = self
+        return new_game_state
 
     def in_zone(self, zone: zone.Zone)->List['GameObject']:
         return sorted([c for c in self.objects.values() if zone.contains(c)],
@@ -124,12 +124,12 @@ class GameObject:
             self.uid = uid
         game_state.objects[self.uid] = self
 
-    def move_to(self, new_gamestate: GameState):
+    def move_to(self, new_game_state: GameState):
         cpy = self.copy()
         tmp_uid = cpy.uid
-        cpy.game_state = new_gamestate
+        cpy.game_state = new_game_state
         cpy.uid = self.uid
-        new_gamestate.objects[self.uid] = cpy
+        new_game_state.objects[self.uid] = cpy
         del self.game_state.objects[tmp_uid]
         return cpy
     
@@ -171,10 +171,10 @@ class Action(Protocol):
     def __init_subclass__(cls):
         cls.triggers: List['Trigger'] = []
 
-    def choices[T](self,gamestate) -> ChoiceSet[T]:
+    def choices[T](self,game_state) -> ChoiceSet[T]:
         ...
 
-    def do[T](self, gamestate, **kwargs: Choice[T]):
+    def do[T](self, game_state, **kwargs: Choice[T]):
         ...
 
 

@@ -4,24 +4,52 @@ from collections.abc import Callable
 from collections import defaultdict
 from enum import Enum
 from mtg_ai.game import GameObject, GameState, ObjRef, Mana, Action, Choice, ChoiceSet, Event
-from mtg_ai import zone
+from mtg_ai import zone, getters
 from itertools import product
 
 
+class ActionProp:
+    """
+    Adapter to let us assign either getters or values 
+    to a property
+    """
+        
+    def __set_name__(self, owner, name):
+        self.private_name = f"_{name}"
+        self.public_name =name
+
+    def __set__(self, owner, value):
+        if callable(value):
+            setattr(owner, self.private_name, value)
+        else:
+            def default(*args):
+                return value
+            setattr(owner, self.private_name, default)
+        
+    def __get__(self,owner, _objname):
+        return getattr(owner, self.private_name)
+
+
 class Draw(Action):
+    
+    player = ActionProp()
+
     def __init__(self, player):
         self.player = player
 
-    def choices(self, game_state):
-        player = getattr(self.player, 'get', None)
-        player = player(game_state) if player is not None else self.player
+    def choices(self, game_state: GameState):
+        player = self.player(game_state)
+        if player is None:
+            return [{'player': p} for p in game_state.players]
+        else:
+            return [{'player': player}]
+
+    def do(self, game_state, player):
         deck = game_state.in_zone(zone.Deck(owner=player))
         if not deck:
-            return []
-        return [{'card': deck.pop()}]
-
-    def do(self, game_state,card):
-        card = game_state.get(card)
+            return None # todo: game loss
+        
+        card = deck.pop()
         card.zone = zone.Hand(self.player)
         return Event(self,card,None)
 
@@ -29,7 +57,7 @@ class Play(Action):
     def __init__(self, card):
         self.card = card
     
-    def choices(self, _gamestate):
+    def choices(self, _game_state):
         return [{}] # todo: does the card need to make choices as it enters?
     
     def do(self, game_state):
@@ -45,27 +73,28 @@ class TapSymbol(Action):
         """
         self.card = target
     
-    def choices(self, gamestate):
-        card = gamestate.get(self.card)
+    def choices(self, game_state):
+        card = game_state.get(self.card)
         return [] if card.tapped else [{}]
 
-    def do(self, gamestate):
-        gamestate.get(self.card).tapped = True
+    def do(self, game_state):
+        game_state.get(self.card).tapped = True
         return Event(self)
 
 class AddMana(Action):
-    def __init__(self,mana: Union[Mana,Callable[[GameState],Mana]]):
+
+    mana=ActionProp()
+
+    def __init__(self,mana):
         self.mana = mana
 
-    def choices(self, _gamestate) -> ChoiceSet:
+    def choices(self, _game_state) -> ChoiceSet:
         return [{}]
 
-    def do(self, gamestate):
-        if isinstance(self.mana, Mana):
-           gamestate.mana_pool += self.mana
-        else:
-            mana = self.mana(gamestate)
-            gamestate.mana_pool += mana
+    def do(self, game_state):
+        mana = self.mana(game_state)
+        game_state.mana_pool += mana
+
 
 class ActivatedAbility(Action):
     def __init__(self, cost: Action, effect: Action,

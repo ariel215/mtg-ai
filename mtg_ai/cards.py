@@ -54,6 +54,10 @@ class Card(game.GameObject):
     @property
     def summoning_sick(self):
         return self.permanent and self.permanent.summoning_sick
+
+    @property
+    def controller(self):
+        return self.zone.owner
             
     def make_permanent(self):
         self.permanent = True
