@@ -14,7 +14,7 @@ def test_forest():
     g1 = g0.take_action(actions.Play(f1))
     assert len(g0.objects) == 3
     assert len(g1.objects) == 3
-    assert isinstance(g1.get(f1).zone, game.Field)
+    assert isinstance(g1.get(f1).zone, zone.Field)
     assert g1.get(f1).permanent is not None
     choices = t_add_g.choices(g1)
     assert choices

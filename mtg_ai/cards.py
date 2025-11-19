@@ -87,8 +87,8 @@ class Permanent:
           
 def tap_mana(card,mana) -> actions.ActivatedAbility:
     return actions.ActivatedAbility(
-        costs = [actions.TapSymbol(card)],
-        effects=[actions.AddMana(mana)]
+        cost=actions.TapSymbol(card),
+        effect=actions.AddMana(mana)
     )
 
 def forest(game_state: game.GameState):

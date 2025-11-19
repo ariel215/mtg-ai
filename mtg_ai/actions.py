@@ -67,33 +67,30 @@ class AddMana(Action):
             mana = self.mana(gamestate)
             gamestate.mana_pool += mana
 
-
 class ActivatedAbility(Action):
-    def __init__(self, costs: List[Action], effects: List[Action],
+    def __init__(self, cost: Action, effect: Action,
                  uses_stack: bool = False):
         # todo: change default for activated abilities to use stack
         # once fully implemented
-        self.costs = costs
-        self.effects = effects
+        self.cost = cost
+        self.effect = effect
         self.uses_stack = uses_stack
         
     def choices(self, game_state: GameState):
-        costs = product(*[cost.choices(game_state) for cost in self.costs])
-        effects = product(*[effect.choices(game_state) for effect in self.effects])
+        costs = self.cost.choices(game_state)
+        effects = self.effect.choices(game_state)
         return [{'costs_choice': c, 'effects_choice': e} for (c,e) in product(costs, effects)]
 
     def do(self, game_state, costs_choice, effects_choice):
-        for (cost, cc) in zip(self.costs, costs_choice):
-            cost.do(game_state,**cc)
+        self.cost.do(game_state,**costs_choice)
         if self.uses_stack: 
             new_ability = StackAbility(game_state=game_state,
-                                   effects=self.effects,
+                                   effects=self.effect,
                                    source=self,
                                    )
             game_state.stack(new_ability)
         else:
-            for (effect, ec) in zip(self.effects, effects_choice):
-                effect.do(game_state, **ec)
+            self.effect.do(game_state, **effects_choice)
             return game_state
 
 class Trigger:
