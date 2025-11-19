@@ -22,6 +22,7 @@ class Card(game.GameObject):
     def __init__(self, name,
                  cost: Optional[game.Mana] = None,
                  types: Iterable[CardType]=(),
+                 subtypes: Iterable[str] = (),
                  abilities: Optional[Abilities] = None,
                  zone:Optional[zone.Zone]=None,
                  permanent: bool = False,
@@ -34,6 +35,7 @@ class Card(game.GameObject):
         self.zone = zone 
         self.name = name
         self.types = set(types)
+        self.subtypes = set(st.lower() for st in subtypes)
         self.permanent = permanent
         self.tapped = tapped
         self.abilities = abilities or Card.Abilities()
@@ -104,6 +106,7 @@ def forest(game_state: game.GameState):
 def vine_trellis(game_state: game.GameState):
     vt = Card(name="Vine Trellis",
              types=(CardType.Creature,),
+             subtypes=("wall",),
              cost=game.Mana(green=1,generic=1),
              game_state=game_state)
     vt.set_abilities(
@@ -115,6 +118,8 @@ def vine_trellis(game_state: game.GameState):
 def wall_of_omens(game_state: game.GameState):
     wo = Card(
         name="Wall of Omens",
+        types=(CardType.Creature),
+        subtypes=("wall"),
         cost = game.Mana(white=1, generic=1),
         game_state=game_state
     )
@@ -126,3 +131,24 @@ def wall_of_omens(game_state: game.GameState):
     )
 
     return wo
+
+def overgrown_battlement(game_state: game.GameState):
+    battlement = Card(
+        name="Overgrown Battlement",
+        types=(CardType.Creature,),
+        subtypes=("wall",),
+        cost = game.Mana(green=1, generic=1),
+        game_state=game_state
+    )
+    def mana_added(game_state)->game.Mana:
+        return game.Mana(green=len(
+            card for card in game_state.in_zone(zone.Field())
+            if card.zone.owner == battlement.owner
+            and "wall" in card.subtypes
+        ))
+
+    battlement.set_abilities(activated=(
+        actions.ActivatedAbility(cost=actions.TapSymbol(battlement),
+        action=actions.AddMana(mana=mana_added)
+    ),))
+    return battlement
