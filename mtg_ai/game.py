@@ -79,7 +79,7 @@ class GameState:
 
     def in_zone(self, zone: zone.Zone)->List['GameObject']:
         return sorted([c for c in self.objects.values() if zone.contains(c)],
-        key=lambda card: card.zone.position)
+        key=lambda card: card.zone.position or float('-inf'))
 
     def get(self, object):
         return self.objects[object.uid]

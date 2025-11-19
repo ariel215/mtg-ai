@@ -69,6 +69,7 @@ class Card(game.GameObject):
     def copy(self):
         return Card(name=self.name,
                     types=self.types,
+                    subtypes=self.subtypes,
                     cost=self.cost,
                     abilities=self.abilities,
                     zone=self.zone,
@@ -144,14 +145,26 @@ def overgrown_battlement(game_state: game.GameState):
         game_state=game_state
     )
     def mana_added(game_state)->game.Mana:
-        return sum(game.Mana(green=1) 
-        for card in game_state.in_zone(zone.Field())
-        if card.zone.owner == battlement.owner
-        and "wall" in card.subtypes # this is technically wrong -- should be for defenders not walls
-    )
+        owner = getters.Controller(battlement)(game_state)
+        total = game.Mana(green=len([card
+            for card in game_state.in_zone(zone.Field(owner=owner))
+            if "wall" in card.subtypes # this is technically wrong -- should be for defenders not walls
+        ]))
+        return total
 
     battlement.activated(
-        actions.TapSymbol(battlement),
-        action=actions.AddMana(mana_added)
+        cost=actions.TapSymbol(battlement),
+        effect=actions.AddMana(mana_added)
     )
     return battlement
+
+def saruli(game_state):
+    sl = Card(
+        name="Saruli Caretaker",
+        types=(CardType.Creature,),
+        subtypes=("wall",),
+        game_state=game_state
+    )
+    sl.activated(
+        
+    )

@@ -81,6 +81,21 @@ class TapSymbol(Action):
         game_state.get(self.card).tapped = True
         return Event(self)
 
+class Tap(Action):
+
+    def __init__(self, condition):
+        self.condition = condition
+
+    def choices(self, game_state):
+        return [{card: c} for c in game_state.objects.values() if self.condition(c)
+            and not getattr(c,'tapped', True)
+        ]
+
+    def do(self, game_state,card):
+        card = game_state.get(card)
+        card.tapped = True
+
+
 class AddMana(Action):
 
     mana=ActionProp()

@@ -66,3 +66,15 @@ def test_etb():
     assert f2.zone.owner == 0
     assert len(g3.in_zone(zone.Hand(owner=0))) == 1
     assert len(g3.in_zone(zone.Stack())) == 0
+
+
+def test_battlement():
+    gs = game.GameState([0])
+    b1 = cards.overgrown_battlement(gs)
+    b1.zone = zone.Field(0)
+    b2 = cards.overgrown_battlement(gs)
+    b2.zone = zone.Field(0)
+    ability = b1.abilities.activated[0]
+    choice = ability.choices(gs)[0]
+    gs = gs.take_action(ability, choice)
+    assert gs.mana_pool.green == 2
