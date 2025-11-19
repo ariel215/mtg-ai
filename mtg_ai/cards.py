@@ -16,7 +16,6 @@ class Card(game.GameObject):
     @dataclass
     class Abilities:
         static: list = field(default_factory=list)
-        triggered: list = field(default_factory=list)
         activated: list = field(default_factory=list)
 
     def __init__(self, name,
@@ -41,15 +40,15 @@ class Card(game.GameObject):
         self.abilities = abilities or Card.Abilities()
 
 
-    def set_abilities(self, static=(), triggered=(), activated=()):
-        self.abilities = self.Abilities(
-            static=list(static),
-             triggered=list(triggered),
-             activated=list(activated)
-        )
+    def activated(self, cost: game.Action, effect: game.Action, uses_stack: bool=False):
+        self.abilities.activated.append(actions.ActivatedAbility(
+            cost=cost,
+            effect=effect,
+            uses_stack=uses_stack
+        ))
         return self
-    
-    def add_trigger(self, when: type(game.Action), condition, action: actions.Action):
+
+    def triggered(self, when: type(game.Action), condition, action: actions.Action):
         when.triggers.append(actions.Trigger(condition=condition, action=action))
         return self
 
@@ -99,7 +98,10 @@ def tap_mana(card,mana) -> actions.ActivatedAbility:
 
 def forest(game_state: game.GameState):
     card = Card( "Forest", (CardType.Land,), game_state=game_state )
-    card.set_abilities( activated=[ tap_mana(card, game.Mana(green=1)) ] )
+    card.activated(
+        actions.TapSymbol(card),
+        actions.AddMana(game.Mana(green=1))
+    )
     return card
 
 
@@ -109,8 +111,9 @@ def vine_trellis(game_state: game.GameState):
              subtypes=("wall",),
              cost=game.Mana(green=1,generic=1),
              game_state=game_state)
-    vt.set_abilities(
-        activated=[tap_mana(vt,game.Mana(green=1))]
+    vt.activated(
+        actions.TapSymbol(vt),
+        actions.AddMana(game.Mana(green=1))
     )
     return vt
 
@@ -124,7 +127,7 @@ def wall_of_omens(game_state: game.GameState):
         game_state=game_state
     )
 
-    wo.add_trigger(
+    wo.triggered(
         when=actions.Play,
         condition=lambda ev: ev.source.uid == wo.uid,
         action=actions.Draw(getters.Controller(wo))
@@ -141,14 +144,14 @@ def overgrown_battlement(game_state: game.GameState):
         game_state=game_state
     )
     def mana_added(game_state)->game.Mana:
-        return game.Mana(green=len(
-            card for card in game_state.in_zone(zone.Field())
-            if card.zone.owner == battlement.owner
-            and "wall" in card.subtypes
-        ))
+        return sum(game.Mana(green=1) 
+        for card in game_state.in_zone(zone.Field())
+        if card.zone.owner == battlement.owner
+        and "wall" in card.subtypes # this is technically wrong -- should be for defenders not walls
+    )
 
-    battlement.set_abilities(activated=(
-        actions.ActivatedAbility(cost=actions.TapSymbol(battlement),
-        action=actions.AddMana(mana=mana_added)
-    ),))
+    battlement.activated(
+        actions.TapSymbol(battlement),
+        action=actions.AddMana(mana_added)
+    )
     return battlement

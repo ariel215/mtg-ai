@@ -61,5 +61,8 @@ def test_etb():
     stack = g1.in_zone(zone.Stack()) 
     assert len(stack) == 1
     g3 = g1.resolve_stack()
-#     assert len(g3.in_zone(zone.Hand(0))) == 1
-#     assert len(g3.in_zone(zone.Stack())) == 0
+    f2 = g3.get(f1)
+    assert isinstance(f2.zone, zone.Hand)
+    assert f2.zone.owner == 0
+    assert len(g3.in_zone(zone.Hand(owner=0))) == 1
+    assert len(g3.in_zone(zone.Stack())) == 0

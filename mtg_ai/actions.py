@@ -50,7 +50,7 @@ class Draw(Action):
             return None # todo: game loss
         
         card = deck.pop()
-        card.zone = zone.Hand(self.player)
+        card.zone = zone.Hand(owner=player)
         return Event(self,card,None)
 
 class Play(Action):

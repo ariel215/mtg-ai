@@ -97,7 +97,9 @@ class GameState:
         top = stack.pop()
         choices = top.choices(self)
 
-        return self.take_action(top, choices[0])
+        new_state = self.take_action(top, choices[0])
+        del new_state.objects[top.uid]
+        return new_state
 
     def take_action(self, action, choices: Dict[str, Any] | None = None)->'GameState':
         choices = choices or {}
@@ -206,6 +208,26 @@ class Mana:
                 setattr(self, field, value - amt)
                 generic_cost -= amt 
         return self
+    
+    def __add__(self, other) -> 'Mana':
+        new = self.copy()
+        new += other
+        return new
+
+    def __sub__(self, other) -> 'Mana':
+        new = self.copy() 
+        new -= other
+        return new
+
+    def __imul__(self, amount):
+        for field in ('white','blue','black','red','green','generic','colorless'):
+            setattr(self, field, getattr(self, field) * amount)
+        return self
+
+    def __mul__(self, amount):
+        copy = self.copy() 
+        copy *= amount
+        return copy
 
     @property
     def mana_value(self):
@@ -213,7 +235,6 @@ class Mana:
          for field in
          ('white','blue','black','red','green','colorless','generic')
      )
-
 
     def __eq__(self, other):
         if not isinstance(other, type(self)):
@@ -245,3 +266,4 @@ class Mana:
             self.generic,
             self.colorless
         )
+    
