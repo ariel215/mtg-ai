@@ -87,7 +87,7 @@ class Tap(Action):
         self.condition = condition
 
     def choices(self, game_state):
-        return [{card: c} for c in game_state.objects.values() if self.condition(c)
+        return [{'card': c} for c in game_state.objects.values() if self.condition(c)
             and not getattr(c,'tapped', True)
         ]
 
@@ -110,6 +110,22 @@ class AddMana(Action):
         mana = self.mana(game_state)
         game_state.mana_pool += mana
 
+class All(Action):
+    def __init__(self, *actions):
+        self.actions = actions
+
+    def choices(self,game_state):
+        subchoices = [action.choices(game_state) for action in self.actions]
+        combinations = list(product(*subchoices))
+        return [{'choices': option }
+        for option in combinations]
+    
+    def do(self, game_state, choices):
+        # todo: this isn't actually the right signature for Action.do()
+        return [
+            action.do(game_state,**choice)
+            for action, choice in zip(self.actions, choices)
+        ]
 
 class ActivatedAbility(Action):
     def __init__(self, cost: Action, effect: Action,

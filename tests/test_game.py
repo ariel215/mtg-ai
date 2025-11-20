@@ -78,3 +78,23 @@ def test_battlement():
     choice = ability.choices(gs)[0]
     gs = gs.take_action(ability, choice)
     assert gs.mana_pool.green == 2
+
+def test_saruli():
+    gs = game.GameState([0])
+    omens = cards.wall_of_omens(gs)
+    saruli = cards.saruli(gs)
+    omens.zone = zone.Field(0)
+    saruli.zone = zone.Field(0)
+    saruli_ability = saruli.abilities.activated[0]
+    choices = saruli_ability.choices(gs)
+    assert len(choices) == 1
+    assert len(choices[0]['costs_choice']) == 1
+    o2 = cards.wall_of_omens(gs)
+    o2.zone = zone.Field(0)
+    choices = saruli_ability.choices(gs)
+    assert len(choices) == 2
+    choice = choices[0]
+    gs = gs.take_action(saruli_ability,choice)
+    assert gs.get(saruli).tapped
+    assert gs.get(omens).tapped or gs.get(o2).tapped
+    assert gs.mana_pool.green == 1

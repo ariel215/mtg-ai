@@ -122,8 +122,8 @@ def vine_trellis(game_state: game.GameState):
 def wall_of_omens(game_state: game.GameState):
     wo = Card(
         name="Wall of Omens",
-        types=(CardType.Creature),
-        subtypes=("wall"),
+        types=(CardType.Creature,),
+        subtypes=("wall",),
         cost = game.Mana(white=1, generic=1),
         game_state=game_state
     )
@@ -158,7 +158,7 @@ def overgrown_battlement(game_state: game.GameState):
     )
     return battlement
 
-def saruli(game_state):
+def saruli(game_state) -> Card:
     sl = Card(
         name="Saruli Caretaker",
         types=(CardType.Creature,),
@@ -166,5 +166,10 @@ def saruli(game_state):
         game_state=game_state
     )
     sl.activated(
-        
+        cost=actions.All(
+            actions.TapSymbol(sl),
+            actions.Tap(lambda card: CardType.Creature in card.types and card.uid != sl.uid)
+        ),
+        effect=actions.AddMana(game.Mana(green=1))
     )
+    return sl
