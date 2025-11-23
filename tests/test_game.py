@@ -1,5 +1,10 @@
 from mtg_ai import cards, game, actions, zone, mana, decklist
 
+
+def setup_function(fun):
+    actions.Play.triggers.clear()
+
+
 def test_forest():
     g0 = game.GameState([0])
     deck = [decklist.Forest(g0), decklist.Forest(g0), decklist.Forest(g0)]
@@ -108,3 +113,54 @@ def test_gold_mana():
 
     cost.white = 2
     assert not available.can_pay(cost)
+
+def test_arcades():
+    g0 = game.GameState([0])
+    f1 = cards.forest(g0)
+    f2 = cards.forest(g0)
+    assert len(actions.Play.triggers) == 0
+    arc = decklist.Arcades(g0)
+    assert len(actions.Play.triggers) == 1
+    omens = decklist.WallOfOmens(g0)
+    assert len(actions.Play.triggers) == 2
+
+    f1.zone = zone.Deck(0,0)
+    f2.zone = zone.Deck(0,1)
+    arc.zone = zone.Field(0)
+    omens.zone = zone.Hand(0)
+
+    g1 = g0.take_action(actions.Play(omens))
+    assert len(g1.triggers) == 2
+    g1.stack_triggers()
+    assert len(g1.triggers) == 0
+    stack = g1.in_zone(zone.Stack()) 
+    assert len(stack) == 2
+    g2 = g1.resolve_stack()
+    f2_1 = g2.get(f2)
+    assert isinstance(f2_1.zone, zone.Hand)
+    assert f2.zone.owner == 0
+    assert len(g2.in_zone(zone.Hand(owner=0))) == 1
+    assert len(g2.in_zone(zone.Stack())) == 1
+    g3 = g2.resolve_stack()
+    stack = g3.in_zone(zone.Stack()) 
+    assert len(stack) == 0
+    stack = g3.in_zone(zone.Stack()) 
+    f1_1 = g3.get(f1)
+    assert isinstance(f1_1.zone, zone.Hand)
+    assert f1_1.zone.owner == 0
+    assert len(g3.in_zone(zone.Hand(owner=0))) == 2
+    assert len(g3.in_zone(zone.Stack())) == 0
+
+
+def test_coco():
+    g0 = game.GameState([0])
+    coco = cards.collected_company(g0)
+    deck = [cards.forest(g0) for _ in range(4)] + [cards.axebane(g0) for _ in range(2)]
+    g0.mana_pool += mana.Mana(green=4)
+    g1 = g0.take_action(
+        actions.CastSpell(coco)
+    )
+    g2 = g1.resolve_stack()
+    field = g2.in_zone(zone.Field())
+    assert len(field) == 2
+    assert all(card.name == "Axebane Guardian" for card in field)

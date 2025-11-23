@@ -53,7 +53,7 @@ class Draw(Action):
         
         card = deck.pop()
         card.zone = zone.Hand(owner=player)
-        return Event(self,card,None)
+        return Event(self,game_state,card,None)
 
 class Play(Action):
     def __init__(self, card):
@@ -66,7 +66,7 @@ class Play(Action):
     def do(self, game_state):
         card = game_state.get(self.card)
         card.zone = zone.Field(owner=card.zone.owner)
-        return Event(action=self, source=card,cause=card)
+        return Event(self, game_state, source=card,cause=card)
 
 class TapSymbol(Action):
     def __init__(self, target):
@@ -83,7 +83,7 @@ class TapSymbol(Action):
 
     def do(self, game_state):
         game_state.get(self.card).tapped = True
-        return Event(self)
+        return Event(self,game_state)
 
 class Tap(Action):
 
@@ -221,4 +221,4 @@ class CastSpell(Action):
         card = game_state.get(self.card)
         game_state.mana_pool -= mana
         game_state.stack(card)
-        return Event(action=self,source=card,cause=card)
+        return Event(self,game_state,source=card,cause=card)

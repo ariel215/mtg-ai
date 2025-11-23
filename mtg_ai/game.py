@@ -7,29 +7,11 @@ Player = int
 StackObject = TypeVar('StackObject')
 
 class Event:
-    def __init__(self, action, source=None, cause=None):
+    def __init__(self, action, game_state: 'GameState', source=None, cause=None, ):
         self.action = action 
-        self.source = source 
+        self.source = source
         self.cause = cause
-
-
-class EventFilter:
-    def matches(self, event: Event) -> bool:
-        return NotImplemented
-
-    def __and__(self, other) -> 'EventFilter':
-        new_filter = EventFilter()
-        def new_matches(filter, event):
-            return self.matches(event) and other.matches(event)
-        new_filter.matches = new_matches
-        return new_filter
-
-    def __or__(self, other) -> 'EventFilter':
-        new_filter = EventFilter()
-        def new_matches(filter, event):
-            return self.matches(event) and other.matches(event)
-        new_filter.matches = new_matches
-        return new_filter
+        self.game_state = game_state
 
 class GameState:
 
@@ -67,6 +49,9 @@ class GameState:
             card.zone = zone.Stack(position=0)
 
     def resolve_stack(self) -> 'GameState':
+        """
+        Resolve the top of the stack
+        """
         stack = self.in_zone(zone.Stack())
         top = stack.pop()
         choices = top.choose(self)
@@ -79,6 +64,7 @@ class GameState:
         choices = choices or {}
         new_state = self.copy()
         event = action.perform(new_state, **choices)
+        event.game_state = new_state
         new_state.triggers.extend(
             (event,trigger) for trigger in action.triggers if trigger.condition(event)
         )

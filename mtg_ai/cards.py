@@ -85,3 +85,91 @@ class Card(game.GameObject):
 
     def __repr__(self):
         return str(self)
+ 
+ 
+class Permanent:
+
+    def __init__(self, card: Card, tapped: bool = False):        
+        self.card = card
+        self.tapped = tapped 
+        self.summoning_sick = CardType.Creature in self.card.types 
+        
+def forest(game_state: game.GameState):
+    card = Card( "Forest", (CardType.Land,), game_state=game_state )
+    card.activated(
+        actions.TapSymbol(card),
+        actions.AddMana(mana.Mana(green=1))
+    )
+    return card
+
+
+def vine_trellis(game_state: game.GameState):
+    vt = Card(name="Vine Trellis",
+            types=(CardType.Creature,),
+            subtypes=("wall",),
+            cost=mana.Mana(green=1,generic=1),
+            game_state=game_state)
+    vt.activated(
+        actions.TapSymbol(vt),
+        actions.AddMana(mana.Mana(green=1))
+    )
+    return vt
+
+
+
+
+def wall_of_omens(game_state: game.GameState):
+    wo = Card(
+        name="Wall of Omens",
+        types=(CardType.Creature,),
+        subtypes=("wall",),
+        cost = mana.Mana(white=1, generic=1),
+        game_state=game_state
+    )
+
+    wo.triggered(
+        when=actions.Play,
+        condition=lambda ev: ev.source.uid == wo.uid,
+        action=actions.Draw(getters.Controller(wo))
+    )
+
+    return wo
+
+
+def overgrown_battlement(game_state: game.GameState):
+    battlement = Card(
+        name="Overgrown Battlement",
+        types=(CardType.Creature,),
+        subtypes=("wall",),
+        cost = mana.Mana(green=1, generic=1),
+        game_state=game_state
+    )
+    def mana_added(game_state)->mana.Mana:
+        owner = getters.Controller(battlement)(game_state)
+        total = mana.Mana(green=len([card
+            for card in game_state.in_zone(zone.Field(owner=owner))
+            if "wall" in card.subtypes # this is technically wrong -- should be for defenders not walls
+        ]))
+        return total
+
+    battlement.activated(
+        cost=actions.TapSymbol(battlement),
+        effect=actions.AddMana(mana_added)
+    )
+    return battlement
+
+def saruli(game_state) -> Card:
+    sl = Card(
+        name="Saruli Caretaker",
+        types=(CardType.Creature,),
+        subtypes=("wall",),
+        game_state=game_state
+    )
+    sl.activated(
+        cost=actions.All(
+            actions.TapSymbol(sl),
+            actions.Tap(lambda card: CardType.Creature in card.types and card.uid != sl.uid)
+        ),
+        effect=actions.AddMana(mana.Mana(green=1))
+    )
+    return sl

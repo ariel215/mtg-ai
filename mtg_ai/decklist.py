@@ -1,4 +1,4 @@
-from mtg_ai import actions, game, getters, zone 
+from mtg_ai import actions, game, getters, zone, mana
 from mtg_ai.cards import Card, CardType
   
 def tap_mana(card,mana) -> actions.ActivatedAbility:
@@ -12,7 +12,7 @@ class Forest(Card):
         super().__init__( "Forest", (CardType.Land,), game_state=game_state)
         self.activated(
             actions.TapSymbol(self),
-            actions.AddMana(game.Mana(green=1))
+            actions.AddMana(mana.Mana(green=1))
         )
 
 class VineTrellis(Card):
@@ -21,12 +21,12 @@ class VineTrellis(Card):
             name="Vine Trellis",
             types=(CardType.Creature,),
             subtypes=("wall",),
-            cost=game.Mana(green=1,generic=1),
+            cost=mana.Mana(green=1,generic=1),
             game_state=game_state)
 
         self.activated(
             actions.TapSymbol(self),
-            actions.AddMana(game.Mana(green=1))
+            actions.AddMana(mana.Mana(green=1))
         )
 
 
@@ -36,7 +36,7 @@ class WallOfOmens(Card):
             name="Wall of Omens",
             types=(CardType.Creature,),
             subtypes=("wall",),
-            cost = game.Mana(white=1, generic=1),
+            cost = mana.Mana(white=1, generic=1),
             game_state=game_state
         )
 
@@ -52,12 +52,12 @@ class Battlement(Card):
         name="Overgrown Battlement",
         types=(CardType.Creature,),
         subtypes=("wall",),
-        cost = game.Mana(green=1, generic=1),
+        cost = mana.Mana(green=1, generic=1),
         game_state=game_state
         )
-        def mana_added(game_state)->game.Mana:
+        def mana_added(game_state)->mana.Mana:
             owner = getters.Controller(self)(game_state)
-            total = game.Mana(green=len([card
+            total = mana.Mana(green=len([card
                 for card in game_state.in_zone(zone.Field(owner=owner))
                 if "wall" in card.subtypes # this is technically wrong -- should be for defenders not walls
             ]))
@@ -67,6 +67,54 @@ class Battlement(Card):
             cost=actions.TapSymbol(self),
             effect=actions.AddMana(mana_added)
         )
+
+class Axebane(Card):
+    def __init__(self, game_state):
+        super().__init__(
+            name="Axebane Guardian",
+            types=(CardType.Creature,),
+            subtypes=("wall",),
+            cost = mana.Mana(green=1, generic=2),
+            game_state=game_state
+        )
+        def mana_added(game_state: game.GameState)->mana.Mana:
+            owner = getters.Controller(self)(game_state)
+            total = mana.Mana(gold=len([card
+                for card in game_state.in_zone(zone.Field(owner=owner))
+                if "wall" in card.subtypes # this is technically wrong -- should be for defenders not walls
+            ]))
+            return total
+
+        self.activated(
+            cost=actions.TapSymbol(self),
+            effect=actions.AddMana(mana_added)
+        )
+
+class Arcades(Card):
+
+    def __init__(self, game_state: game.GameState) -> Card: 
+        super().__init__(
+            name="Arcades the Strategist",
+            types=(CardType.Creature,),
+            subtypes=("dragon", ),
+            cost=mana.Mana(white=1,blue=1, green=1,generic=1),
+            game_state=game_state
+        )
+        def arc_triggers_if(event):
+            gs = event.game_state
+            arc_here = gs.get(self)
+            if not isinstance(arc_here.zone, zone.Field):
+                return False
+            if arc_here.zone.owner != event.source.zone.owner:
+                return False
+            return "wall" in event.source.subtypes
+        
+        self.triggered(
+            when=actions.Play,
+            condition=arc_triggers_if,
+            action=actions.Draw(player=getters.Controller(self))
+        )
+
 
 class Saruli(Card):
     def __init__(self, game_state):
@@ -81,5 +129,17 @@ class Saruli(Card):
                 actions.TapSymbol(self),
                 actions.Tap(lambda card: CardType.Creature in card.types and card.uid != self.uid)
             ),
-            effect=actions.AddMana(game.Mana(green=1))
+            effect=actions.AddMana(mana.Mana(green=1))
+        )
+
+class SylvanCaryatid(Card):
+    def __init__(self, game_state: game.GameState):
+        super().__init__(name="Sylvan Caryatid",
+                types=(CardType.Creature,),
+                subtypes=("wall",),
+                cost=mana.Mana(green=1,generic=1),
+                game_state=game_state)
+        self.activated(
+            actions.TapSymbol(self),
+            actions.AddMana(mana.Mana(gold=1))
         )
