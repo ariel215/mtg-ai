@@ -1,4 +1,4 @@
-from mtg_ai import cards, game, actions, zone, decklist
+from mtg_ai import cards, game, actions, zone, mana, decklist
 
 def test_forest():
     g0 = game.GameState([0])
@@ -98,3 +98,10 @@ def test_saruli():
     assert gs.get(saruli).tapped
     assert gs.get(omens).tapped or gs.get(o2).tapped
     assert gs.mana_pool.green == 1
+
+def test_gold_mana():
+    # 'Gold' mana is a little hack to skip choosing colors 
+    # when an effect produces "mana of any color"
+    available = mana.Mana(gold=3)
+    cost = mana.Mana(white=1, black=1, generic=1)
+    assert available.can_pay(cost)

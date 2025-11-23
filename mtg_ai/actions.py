@@ -5,6 +5,7 @@ from collections import defaultdict
 from enum import Enum
 from mtg_ai.game import GameObject, GameState, Mana, Action, Choice, ChoiceSet, Event
 from mtg_ai import zone, getters
+from mtg_ai.mana import Mana
 from itertools import product
 
 

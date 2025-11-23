@@ -1,4 +1,4 @@
-from mtg_ai import game, actions, getters, zone
+from mtg_ai import game, actions, getters, zone, mana
 from typing import Iterable, Optional
 from dataclasses import dataclass, field
 from enum import Enum
@@ -22,7 +22,7 @@ class Card(game.GameObject):
         Card.cards[cls.__name__] = cls
 
     def __init__(self, name,
-                 cost: Optional[game.Mana] = None,
+                 cost: Optional[mana.Mana] = None,
                  types: Iterable[CardType]=(),
                  subtypes: Iterable[str] = (),
                  abilities: Optional[Abilities] = None,
@@ -85,5 +85,3 @@ class Card(game.GameObject):
 
     def __repr__(self):
         return str(self)
-
-  
