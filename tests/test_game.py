@@ -105,3 +105,6 @@ def test_gold_mana():
     available = mana.Mana(gold=3)
     cost = mana.Mana(white=1, black=1, generic=1)
     assert available.can_pay(cost)
+
+    cost.white = 2
+    assert not available.can_pay(cost)
