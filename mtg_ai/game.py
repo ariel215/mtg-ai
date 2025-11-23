@@ -1,6 +1,7 @@
 from dataclasses import dataclass
+from itertools import product
 from typing import Protocol, TypeVar, Optional, List, Dict, Any
-from . import zone
+from . import zones
 from .mana import Mana
 
 Player = int
@@ -33,31 +34,31 @@ class GameState:
         new_game_state.parent = self
         return new_game_state
 
-    def in_zone(self, zone: zone.Zone)->List['GameObject']:
+    def in_zone(self, zone: zones.Zone)->List['GameObject']:
         return sorted([c for c in self.objects.values() if zone.contains(c)],
         key=lambda card: card.zone.position or float('-inf'))
 
-    def get(self, object):
+    def get(self, object: 'GameObject') -> 'GameObject':
         return self.objects[object.uid]
 
     def stack(self, card):
-        stack = self.in_zone(zone.Stack())
+        owner = card.zone.owner if card.zone else None
+        stack = self.in_zone(zones.Stack())
         if stack:
             top = max(obj.zone.position for obj in stack)
-            card.zone = zone.Stack(position=top+1)
+            card.zone = zones.Stack(owner=owner, position=top+1)
         else:
-            card.zone = zone.Stack(position=0)
+            card.zone = zones.Stack(owner=owner, position=0)
 
     def resolve_stack(self) -> 'GameState':
         """
         Resolve the top of the stack
         """
-        stack = self.in_zone(zone.Stack())
+        stack = self.in_zone(zones.Stack())
         top = stack.pop()
-        choices = top.choose(self)
+        choices = top.effect.choices(self)
 
-        new_state = self.take_action(top, choices[0])
-        del new_state.objects[top.uid]
+        new_state = self.take_action(top.effect, choices[0])
         return new_state
 
     def take_action(self, action, choices: Dict[str, Any] | None = None)->'GameState':
@@ -72,7 +73,7 @@ class GameState:
 
     def stack_triggers(self):
         for (event, trigger) in self.triggers:
-            trigger.stack(self, event)
+            trigger.do(self, event)
         self.triggers.clear()
 
 class GameObject:
@@ -97,6 +98,8 @@ class GameObject:
     
     def copy(self) -> 'GameObject':
         raise NotImplemented
+
+
 
 T = TypeVar('T')
 type Choice[T] = Dict[str, T]
@@ -133,8 +136,10 @@ class Action(Protocol):
              for choice in choices 
          ]
  
-    def perform(self, game_state, **kwargs):
-         return self.do(game_state, **(kwargs | self.params))
+    def perform(self, game_state, **kwargs) -> Event:
+        if event := self.do(game_state, **(kwargs | self.params)):
+            return event
+        return Event(self, game_state)
  
     def do[T](self, game_state, **kwargs: Choice[T]):
         """
@@ -143,4 +148,62 @@ class Action(Protocol):
         needed to make its constituent changes.
         """
         ...
+    
+    def __add__(self, other: 'Action') -> 'And':
+        return And(self, other)
 
+
+class And(Action):
+    def __init__(self, *actions):
+        super().__init__()
+        self.actions: List[Action] = list(actions)
+
+    def choices(self,game_state):
+        subchoices = [action.choices(game_state) for action in self.actions]
+        combinations = list(product(*subchoices))
+        return [{'choices': option }
+        for option in combinations]
+    
+    def do(self, game_state, choices):
+        # todo: this isn't actually the right signature for Action.do()
+        events = [action.perform(game_state,**choice)
+            for action, choice in zip(self.actions, choices)
+        ]
+        # return next(filter(None,events))
+    
+
+    def __add__(self, other: Action):
+        new_action = And(*self.actions)
+        new_action.actions.append(other)
+        return new_action
+
+class StackAbility(GameObject):
+    """
+    An ability that is on the stack, waiting to resolve
+    """
+
+    class Cleanup(Action):
+        def __init__(self, obj):
+            super().__init__()
+            self.obj = obj
+            
+        def choices(self, _game_state):
+            return [{}]
+
+        def do(self, game_state):
+            del game_state.objects[self.obj.uid]
+
+    def __init__(self,game_state: GameState,
+                 effect):
+        self.zone = None 
+        super().__init__(game_state)
+        self.effect: Action = effect + StackAbility.Cleanup(self)
+
+    def copy(self):
+        ability = StackAbility(
+            game_state=self.game_state,
+            effect=self.effect
+        )
+        ability.zone=self.zone
+        ability.effect = self.effect
+        return ability

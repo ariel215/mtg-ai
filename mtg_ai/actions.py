@@ -1,41 +1,21 @@
-from dataclasses import dataclass, field
-from typing import Protocol, List, Union, Iterable, Optional
-from collections.abc import Callable
-from collections import defaultdict
-from enum import Enum
-from mtg_ai.game import GameObject, GameState, Mana, Action, Choice, ChoiceSet, Event
-from mtg_ai import zone, getters
+from mtg_ai import getters
+from mtg_ai.game import GameState, Action, ChoiceSet, Event, StackAbility
+from mtg_ai import zones
 from mtg_ai.mana import Mana
 from itertools import product
+from mtg_ai.getters import Get
 
-
-class ActionProp:
-    """
-    Adapter to let us assign either getters or values 
-    to a property
-    """
-        
-    def __set_name__(self, owner, name):
-        self.private_name = f"_{name}"
-        self.public_name =name
-
-    def __set__(self, owner, value):
-        if callable(value):
-            setattr(owner, self.private_name, value)
-        else:
-            def default(*args):
-                return value
-            setattr(owner, self.private_name, default)
-        
-    def __get__(self,owner, _objname):
-        return getattr(owner, self.private_name)
 
 
 class Draw(Action):
+    """
+    A player draws a card.
+    If the player is not specified initially, either player can be chosen.
+    """
     
-    player = ActionProp()
+    player = Get()
 
-    def __init__(self, player):
+    def __init__(self, player=None):
         super().__init__()
         self.player = player
 
@@ -47,26 +27,59 @@ class Draw(Action):
             return [{'player': player}]
 
     def do(self, game_state, player):
-        deck = game_state.in_zone(zone.Deck(owner=player))
+        deck = game_state.in_zone(zones.Deck(owner=player))
         if not deck:
             return None # todo: game loss
         
         card = deck.pop()
-        card.zone = zone.Hand(owner=player)
+        card.zone = zones.Hand(owner=player)
         return Event(self,game_state,card,None)
 
 class Play(Action):
-    def __init__(self, card):
+    def __init__(self, card=None):
         super().__init__()
-        self.card = card
+        if card: 
+            self.params['card'] = card
     
     def choices(self, _game_state):
-        return [{}] # todo: does the card need to make choices as it enters?
+        return [{'card': self.card}] # todo: does the card need to make choices as it enters?
     
-    def do(self, game_state):
-        card = game_state.get(self.card)
-        card.zone = zone.Field(owner=card.zone.owner)
+    def do(self, game_state, card):
+        card = game_state.get(card)
+        card.zone = zones.Field(owner=card.zone.owner)
         return Event(self, game_state, source=card,cause=card)
+    
+class MoveTo(Action):
+    zone = Get()
+    def __init__(self, zone):
+        super().__init__()
+        self.zone = zone
+
+    def choices(self, _game_state):
+        return [{}]
+
+    def do(self, game_state,card):
+        zone = self.zone(game_state)
+        if zone.position == zones.TOP:
+            top = max(
+                card.zone.position
+                for card in game_state.objects.values()
+                if hasattr(card,'zone')
+            )
+            zone.position = top + 1
+        elif zone.position == zones.BOTTOM:
+            in_zone = game_state.in_zone(type(zone)(zone.owner))
+            bottom = in_zone[0].zone.position
+            zone.position = bottom
+            for card in in_zone:
+                card.zone.position += 1
+
+        else:
+            # position should not matter in this case
+            assert zone.position is None
+            
+        card = game_state.get(card)
+        card.zone = zone
 
 class TapSymbol(Action):
     def __init__(self, target):
@@ -103,7 +116,7 @@ class Tap(Action):
 
 class AddMana(Action):
 
-    mana=ActionProp()
+    mana=Get()
 
     def __init__(self,mana):
         super().__init__()
@@ -116,23 +129,6 @@ class AddMana(Action):
         mana = self.mana(game_state)
         game_state.mana_pool += mana
 
-class All(Action):
-    def __init__(self, *actions):
-        super().__init__()
-        self.actions = actions
-
-    def choices(self,game_state):
-        subchoices = [action.choices(game_state) for action in self.actions]
-        combinations = list(product(*subchoices))
-        return [{'choices': option }
-        for option in combinations]
-    
-    def do(self, game_state, choices):
-        # todo: this isn't actually the right signature for Action.do()
-        return [
-            action.perform(game_state,**choice)
-            for action, choice in zip(self.actions, choices)
-        ]
 
 class ActivatedAbility(Action):
     def __init__(self, cost: Action, effect: Action,
@@ -162,40 +158,16 @@ class ActivatedAbility(Action):
             return game_state
 
 class Trigger:
-    def __init__(self, condition, action):
-        super().__init__()
+    def __init__(self, condition, action, uses_stack=True):
         self.condition = condition
         self.action = action
+        self.uses_stack = uses_stack
 
-    def stack(self,game_state: GameState, event):
-        return StackAbility(game_state, self.action)
-
-class StackAbility(GameObject, Action):
-    """
-    An ability that is on the stack, waiting to resolve
-    """
-
-    def __init__(self,game_state: GameState,
-                 effect: Action):
-        self.zone = None
-        GameObject.__init__(self,game_state)
-        Action.__init__(self)
-        game_state.stack(self)
-        self.effect: Action = effect
-
-    def copy(self):
-        return StackAbility(
-            game_state=self.game_state,
-            effect=self.effect
-        )
-        
-    def choices(self, game_state):
-        # pinky promise to only try when it's on top of the stack
-        return self.effect.choices(game_state) 
-
-    def do(self,game_state, **choices):
-        return self.effect.perform(game_state,**choices)
-        
+    def do(self,game_state: GameState, event):
+        if self.uses_stack:
+            game_state.stack(StackAbility(game_state, self.action))
+        else:
+            self.action.perform(game_state)
 
 class CastSpell(Action):
     def __init__(self,card):
@@ -205,7 +177,7 @@ class CastSpell(Action):
     def choices(self, game_state: GameState):
         card = game_state.get(self.card)
         card_zone = card.zone
-        if not isinstance(card_zone, zone.Hand):
+        if not isinstance(card_zone, zones.Hand):
             return []
 
         # if card_zone.owner != game_state.priority:
@@ -222,3 +194,29 @@ class CastSpell(Action):
         game_state.mana_pool -= mana
         game_state.stack(card)
         return Event(self,game_state,source=card,cause=card)
+
+class Search(Action):
+    search_in = Get()
+    search_for = Get()
+
+    def __init__(self, search_in, search_for, to_found, to_rest):
+        super().__init__()
+        self.search_in = search_in
+        self.search_for = search_for
+        self.to_found = to_found
+        self.to_rest = to_rest
+
+    def choices(self, game_state):
+        available = self.search_in(game_state)
+        choices = self.search_for(available)
+        available = set(available)
+        return [{'found': c, 'rest': available.difference(choices)} for c in choices]
+    
+    def do(self, game_state, found, rest):
+        events = []
+        for card in found:
+            events.append(self.to_found.perform(game_state, card=card))
+        for card in rest:
+            events.append(self.to_rest.perform(game_state, card=card))
+        return events
+        

@@ -1,4 +1,4 @@
-from mtg_ai import actions, game, getters, zone, mana
+from mtg_ai import actions, game, getters, zones, mana
 from mtg_ai.cards import Card, CardType
   
 def tap_mana(card,mana) -> actions.ActivatedAbility:
@@ -58,7 +58,7 @@ class Battlement(Card):
         def mana_added(game_state)->mana.Mana:
             owner = getters.Controller(self)(game_state)
             total = mana.Mana(green=len([card
-                for card in game_state.in_zone(zone.Field(owner=owner))
+                for card in game_state.in_zone(zones.Field(owner=owner))
                 if "wall" in card.subtypes # this is technically wrong -- should be for defenders not walls
             ]))
             return total
@@ -80,7 +80,7 @@ class Axebane(Card):
         def mana_added(game_state: game.GameState)->mana.Mana:
             owner = getters.Controller(self)(game_state)
             total = mana.Mana(gold=len([card
-                for card in game_state.in_zone(zone.Field(owner=owner))
+                for card in game_state.in_zone(zones.Field(owner=owner))
                 if "wall" in card.subtypes # this is technically wrong -- should be for defenders not walls
             ]))
             return total
@@ -103,7 +103,7 @@ class Arcades(Card):
         def arc_triggers_if(event):
             gs = event.game_state
             arc_here = gs.get(self)
-            if not isinstance(arc_here.zone, zone.Field):
+            if not isinstance(arc_here.zone, zones.Field):
                 return False
             if arc_here.zone.owner != event.source.zone.owner:
                 return False
@@ -125,7 +125,7 @@ class Saruli(Card):
             game_state=game_state
         )
         self.activated(
-            cost=actions.All(
+            cost=game.And(
                 actions.TapSymbol(self),
                 actions.Tap(lambda card: CardType.Creature in card.types and card.uid != self.uid)
             ),
@@ -142,4 +142,21 @@ class SylvanCaryatid(Card):
         self.activated(
             actions.TapSymbol(self),
             actions.AddMana(mana.Mana(gold=1))
+        )
+
+class CollectedCompany(Card):
+    def __init__(self,game_state: game.GameState) -> Card:
+        super().__init__(
+            name="Collected Company",
+            game_state=game_state,
+            cost=mana.Mana(green=1, generic=3),
+            types=(CardType.Instant,)
+        )
+        self.with_effect(
+            actions.Search(
+                search_in=getters.FromZone(getters.Zone(zones.Deck(), getters.Controller(self)), top=6),
+                search_for=getters.UpTo(2,lambda card: CardType.Creature in card.types and card.cost.mana_value <= 3),
+                to_found=actions.Play(),
+                to_rest=actions.MoveTo(getters.Zone(zones.Deck(),getters.Controller(self),zones.BOTTOM))
+            )
         )

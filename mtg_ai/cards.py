@@ -1,7 +1,9 @@
-from mtg_ai import game, actions, getters, zone, mana
-from typing import Iterable, Optional
+from mtg_ai import game, actions, getters, mana, zones
+from typing import Iterable, Optional, TypeVar
 from dataclasses import dataclass, field
 from enum import Enum
+
+Action = TypeVar('Action')
 
 
 class CardType(str, Enum):
@@ -10,6 +12,8 @@ class CardType(str, Enum):
     Instant = "instant"
     Sorcery = "sorcery"
     Artifact = "artifact"
+
+SPELL_TYPES = {CardType.Instant, CardType.Sorcery}
 
 class Card(game.GameObject):
     cards = {}
@@ -26,7 +30,8 @@ class Card(game.GameObject):
                  types: Iterable[CardType]=(),
                  subtypes: Iterable[str] = (),
                  abilities: Optional[Abilities] = None,
-                 zone:Optional[zone.Zone]=None,
+                 effect: Optional[Action] = None,
+                 zone:Optional[zones.Zone]=None,
                  permanent: bool = False,
                  tapped: bool = False,
                  game_state: Optional[game.GameState] = None,
@@ -41,7 +46,16 @@ class Card(game.GameObject):
         self.permanent = permanent
         self.tapped = tapped
         self.abilities = abilities or Card.Abilities()
-
+        self._effect = effect
+        
+    @property
+    def effect(self):
+        dest_zone = zones.Grave(self.controller) if self.types & SPELL_TYPES else zones.Field(self.controller)
+        dest = actions.MoveTo(dest_zone).bind(card=self)
+        if self._effect:
+            return self._effect + dest
+        else:
+            return dest
 
     def activated(self, cost: game.Action, effect: game.Action, uses_stack: bool=False):
         self.abilities.activated.append(actions.ActivatedAbility(
@@ -51,9 +65,12 @@ class Card(game.GameObject):
         ))
         return self
 
-    def triggered(self, when: type(game.Action), condition, action: actions.Action):
+    def triggered(self, when: type[game.Action], condition, action: actions.Action):
         when.triggers.append(actions.Trigger(condition=condition, action=action))
         return self
+    
+    def with_effect(self,effect: actions.Action):
+        self._effect = effect if self._effect is None else self._effect + effect
 
     @property
     def summoning_sick(self):
@@ -75,6 +92,7 @@ class Card(game.GameObject):
                     subtypes=self.subtypes,
                     cost=self.cost,
                     abilities=self.abilities,
+                    effect=self._effect,
                     zone=self.zone,
                     permanent=self.permanent,
                     tapped=self.tapped,
@@ -85,91 +103,32 @@ class Card(game.GameObject):
 
     def __repr__(self):
         return str(self)
- 
- 
-class Permanent:
+    
 
-    def __init__(self, card: Card, tapped: bool = False):        
-        self.card = card
-        self.tapped = tapped 
-        self.summoning_sick = CardType.Creature in self.card.types 
-        
-def forest(game_state: game.GameState):
-    card = Card( "Forest", (CardType.Land,), game_state=game_state )
-    card.activated(
-        actions.TapSymbol(card),
-        actions.AddMana(mana.Mana(green=1))
-    )
-    return card
+# -------------------------------------------------
 
+# Cards in walls: 
 
-def vine_trellis(game_state: game.GameState):
-    vt = Card(name="Vine Trellis",
-            types=(CardType.Creature,),
-            subtypes=("wall",),
-            cost=mana.Mana(green=1,generic=1),
-            game_state=game_state)
-    vt.activated(
-        actions.TapSymbol(vt),
-        actions.AddMana(mana.Mana(green=1))
-    )
-    return vt
+# [x] Caretaker
+# [x] Caryatid
+# Roots
+# [x] Battlement
+# [x] Axebane
+# [x] Blossoms
+# [x] Arcades
+# Recruiter
+# TrophyMage
+# Staff
+# Company
 
+# [x] Forest
+# [x] Plains
+# [x] Island
+# TempleGarden
+# BreedingPool
+# HallowedFountain
+# WindsweptHeath
+# Westvale
+# Wildwoods
+# LumberingFalls
 
-
-
-def wall_of_omens(game_state: game.GameState):
-    wo = Card(
-        name="Wall of Omens",
-        types=(CardType.Creature,),
-        subtypes=("wall",),
-        cost = mana.Mana(white=1, generic=1),
-        game_state=game_state
-    )
-
-    wo.triggered(
-        when=actions.Play,
-        condition=lambda ev: ev.source.uid == wo.uid,
-        action=actions.Draw(getters.Controller(wo))
-    )
-
-    return wo
-
-
-def overgrown_battlement(game_state: game.GameState):
-    battlement = Card(
-        name="Overgrown Battlement",
-        types=(CardType.Creature,),
-        subtypes=("wall",),
-        cost = mana.Mana(green=1, generic=1),
-        game_state=game_state
-    )
-    def mana_added(game_state)->mana.Mana:
-        owner = getters.Controller(battlement)(game_state)
-        total = mana.Mana(green=len([card
-            for card in game_state.in_zone(zone.Field(owner=owner))
-            if "wall" in card.subtypes # this is technically wrong -- should be for defenders not walls
-        ]))
-        return total
-
-    battlement.activated(
-        cost=actions.TapSymbol(battlement),
-        effect=actions.AddMana(mana_added)
-    )
-    return battlement
-
-def saruli(game_state) -> Card:
-    sl = Card(
-        name="Saruli Caretaker",
-        types=(CardType.Creature,),
-        subtypes=("wall",),
-        game_state=game_state
-    )
-    sl.activated(
-        cost=actions.All(
-            actions.TapSymbol(sl),
-            actions.Tap(lambda card: CardType.Creature in card.types and card.uid != sl.uid)
-        ),
-        effect=actions.AddMana(mana.Mana(green=1))
-    )
-    return sl
