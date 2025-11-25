@@ -33,30 +33,6 @@ class EventFilter:
         new_filter.matches = new_matches
         return new_filter
 
-
-class Game:
-    def __init__(self, decks: List[List['Card']], track_history: bool = False):
-        self.history = []
-        players = list(range(len(decks)))
-        for p in players:
-            deck = decks[p]
-            for position in range(len(deck)):
-                deck[position].zone = zone.Deck(owner=p, position=position)
-        cards = [c for deck in decks for c in deck]
-        self.root = GameState(
-            players, cards, [],
-            0,0
-        )
-        self.track_history =track_history
-        
-    @property
-    def active(self):
-        return self.root.active
-
-    @property
-    def priority(self):
-        return self.root.priority
-
 class GameState:
 
     def __init__(self,players: List[Player], mana_pool: Optional['Mana']=None):
@@ -138,45 +114,32 @@ class GameObject:
     def copy(self) -> 'GameObject':
         raise NotImplemented
 
-class ObjRef:
-
-    def __set_name__(self, obj, name):
-        self.private_name = f"_{name}"
-        self.public_name = name
-
-    def __set__(self, owner: GameObject, value: GameObject):
-        if hasattr(value, '__iter__'):
-            ids = [v.uid for v in value]
-            setattr(owner, self.private_name, ids)
-        else:
-            id = value.uid
-            setattr(owner, self.private_name, id)
-            owner.game_state = value.game_state 
-        
-
-    def __get__(self, owner: GameObject, owner_type):
-        uids = getattr(owner,self.private_name)
-        if isinstance(uids, list):
-            return [
-                owner.game_state.objects[uid]
-                for uid in uids 
-            ]
-        else: 
-            return owner.game_state.objects[uid]
-
-
 T = TypeVar('T')
 type Choice[T] = Dict[str, T]
 type ChoiceSet[T] = List[Choice[T]]
 
 class Action(Protocol):
+    
     def __init_subclass__(cls):
         cls.triggers: List['Trigger'] = []
 
     def choices[T](self,game_state) -> ChoiceSet[T]:
+        """
+        The possible choices that can be made for this action.
+        For example: If a player has to sacrifice a creature, 
+        the choices are the creatures that player controls.
+
+        Each element of the ChoiceList should be a dictionary whose 
+        keys are the same as the keyword arguments to `do()`.
+        """
         ...
 
     def do[T](self, game_state, **kwargs: Choice[T]):
+        """
+        Make the necessary changes to the game state. 
+        Each action should have all the information 
+        needed to make its constituent changes.
+        """
         ...
 
 
