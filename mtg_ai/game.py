@@ -71,7 +71,7 @@ class GameState:
     def resolve_stack(self) -> 'GameState':
         stack = self.in_zone(zone.Stack())
         top = stack.pop()
-        choices = top.choices(self)
+        choices = top.choose(self)
 
         new_state = self.take_action(top, choices[0])
         del new_state.objects[top.uid]
@@ -80,7 +80,7 @@ class GameState:
     def take_action(self, action, choices: Dict[str, Any] | None = None)->'GameState':
         choices = choices or {}
         new_state = self.copy()
-        event = action.do(new_state, **choices)
+        event = action.perform(new_state, **choices)
         new_state.triggers.extend(
             (event,trigger) for trigger in action.triggers if trigger.condition(event)
         )
@@ -119,6 +119,13 @@ type Choice[T] = Dict[str, T]
 type ChoiceSet[T] = List[Choice[T]]
 
 class Action(Protocol):
+    def __init__(self):
+        self.params = {}
+
+    def bind(self, **kwargs):
+        self.params |= kwargs
+        return self
+
     
     def __init_subclass__(cls):
         cls.triggers: List['Trigger'] = []
@@ -133,6 +140,29 @@ class Action(Protocol):
         keys are the same as the keyword arguments to `do()`.
         """
         ...
+
+    def choose(self, game_state):
+        # cls.choices() should not let you choose anything set in self.params
+        choices =self.choices(game_state)
+        return [
+            {c: choice[c] for c in choice.keys() - self.params.keys()}
+            for choice in choices 
+        ]
+
+    def perform(self, game_state, **kwargs):
+        return self.do(game_state, **(kwargs | self.params))
+
+    def __init_subclass__(cls):
+        cls.triggers: List['Trigger'] = []
+
+
+        # cls.do() should automatically insert anything in self.params
+        old_do = cls.do
+        def new_do(self, *args, **kwargs):
+            kwargs = kwargs | self.params
+            return old_do(self, *args, **kwargs)
+
+        cls.do = new_do
 
     def do[T](self, game_state, **kwargs: Choice[T]):
         """

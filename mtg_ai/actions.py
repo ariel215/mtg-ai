@@ -35,6 +35,7 @@ class Draw(Action):
     player = ActionProp()
 
     def __init__(self, player):
+        super().__init__()
         self.player = player
 
     def choices(self, game_state: GameState):
@@ -55,6 +56,7 @@ class Draw(Action):
 
 class Play(Action):
     def __init__(self, card):
+        super().__init__()
         self.card = card
     
     def choices(self, _game_state):
@@ -67,6 +69,7 @@ class Play(Action):
 
 class TapSymbol(Action):
     def __init__(self, target):
+        super().__init__()
         """
         Tap a permanent using the tap symbol.
         Target: the permanent to be tapped
@@ -84,6 +87,7 @@ class TapSymbol(Action):
 class Tap(Action):
 
     def __init__(self, condition):
+        super().__init__()
         self.condition = condition
 
     def choices(self, game_state):
@@ -101,6 +105,7 @@ class AddMana(Action):
     mana=ActionProp()
 
     def __init__(self,mana):
+        super().__init__()
         self.mana = mana
 
     def choices(self, _game_state) -> ChoiceSet:
@@ -112,6 +117,7 @@ class AddMana(Action):
 
 class All(Action):
     def __init__(self, *actions):
+        super().__init__()
         self.actions = actions
 
     def choices(self,game_state):
@@ -123,13 +129,14 @@ class All(Action):
     def do(self, game_state, choices):
         # todo: this isn't actually the right signature for Action.do()
         return [
-            action.do(game_state,**choice)
+            action.perform(game_state,**choice)
             for action, choice in zip(self.actions, choices)
         ]
 
 class ActivatedAbility(Action):
     def __init__(self, cost: Action, effect: Action,
                  uses_stack: bool = False):
+        super().__init__()
         # todo: change default for activated abilities to use stack
         # once fully implemented
         self.cost = cost
@@ -142,7 +149,7 @@ class ActivatedAbility(Action):
         return [{'costs_choice': c, 'effects_choice': e} for (c,e) in product(costs, effects)]
 
     def do(self, game_state, costs_choice, effects_choice):
-        self.cost.do(game_state,**costs_choice)
+        self.cost.perform(game_state,**costs_choice)
         if self.uses_stack: 
             new_ability = StackAbility(game_state=game_state,
                                    effects=self.effect,
@@ -150,11 +157,12 @@ class ActivatedAbility(Action):
                                    )
             game_state.stack(new_ability)
         else:
-            self.effect.do(game_state, **effects_choice)
+            self.effect.perform(game_state, **effects_choice)
             return game_state
 
 class Trigger:
     def __init__(self, condition, action):
+        super().__init__()
         self.condition = condition
         self.action = action
 
@@ -168,8 +176,9 @@ class StackAbility(GameObject, Action):
 
     def __init__(self,game_state: GameState,
                  effect: Action):
-        self.zone = None 
-        super().__init__(game_state)
+        self.zone = None
+        GameObject.__init__(self,game_state)
+        Action.__init__(self)
         game_state.stack(self)
         self.effect: Action = effect
 
@@ -184,11 +193,12 @@ class StackAbility(GameObject, Action):
         return self.effect.choices(game_state) 
 
     def do(self,game_state, **choices):
-        return self.effect.do(game_state,**choices)
+        return self.effect.perform(game_state,**choices)
         
 
 class CastSpell(Action):
     def __init__(self,card):
+        super().__init__()
         self.card = card
 
     def choices(self, game_state: GameState):

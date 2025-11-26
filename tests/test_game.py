@@ -38,7 +38,7 @@ def test_cast():
     g2 = g1.take_action(f2.abilities.activated[0],choices)
     cast_spell = actions.CastSpell(vt)
     choice = cast_spell.choices(g2)[0]
-    g3 = g2.take_action(actions.CastSpell(vt),choice)
+    g3 = g2.take_action(actions.CastSpell(vt).bind(mana=g2.mana_pool),{})
 
     vt = g3.get(vt)
     assert isinstance(vt.zone, zone.Stack)
