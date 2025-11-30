@@ -3,7 +3,7 @@ from typing import Protocol, List, Union, Iterable, Optional
 from collections.abc import Callable
 from collections import defaultdict
 from enum import Enum
-from mtg_ai.game import GameObject, GameState, ObjRef, Mana, Action, Choice, ChoiceSet, Event
+from mtg_ai.game import GameObject, GameState, Mana, Action, Choice, ChoiceSet, Event
 from mtg_ai import zone, getters
 from itertools import product
 

@@ -120,12 +120,12 @@ type ChoiceSet[T] = List[Choice[T]]
 
 class Action(Protocol):
     def __init__(self):
-        self.params = {}
-
+         self.params = {}
+ 
     def bind(self, **kwargs):
-        self.params |= kwargs
-        return self
-
+         self.params |= kwargs
+         return self
+ 
     
     def __init_subclass__(cls):
         cls.triggers: List['Trigger'] = []
@@ -140,30 +140,18 @@ class Action(Protocol):
         keys are the same as the keyword arguments to `do()`.
         """
         ...
-
+ 
     def choose(self, game_state):
-        # cls.choices() should not let you choose anything set in self.params
-        choices =self.choices(game_state)
-        return [
-            {c: choice[c] for c in choice.keys() - self.params.keys()}
-            for choice in choices 
-        ]
-
+         # cls.choices() should not let you choose anything set in self.params
+         choices =self.choices(game_state)
+         return [
+             {c: choice[c] for c in choice.keys() - self.params.keys()}
+             for choice in choices 
+         ]
+ 
     def perform(self, game_state, **kwargs):
-        return self.do(game_state, **(kwargs | self.params))
-
-    def __init_subclass__(cls):
-        cls.triggers: List['Trigger'] = []
-
-
-        # cls.do() should automatically insert anything in self.params
-        old_do = cls.do
-        def new_do(self, *args, **kwargs):
-            kwargs = kwargs | self.params
-            return old_do(self, *args, **kwargs)
-
-        cls.do = new_do
-
+         return self.do(game_state, **(kwargs | self.params))
+ 
     def do[T](self, game_state, **kwargs: Choice[T]):
         """
         Make the necessary changes to the game state. 
