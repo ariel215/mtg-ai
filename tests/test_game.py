@@ -1,8 +1,8 @@
-from mtg_ai import cards, game, actions, zone
+from mtg_ai import cards, game, actions, zone, decklist
 
 def test_forest():
     g0 = game.GameState([0])
-    deck = [cards.forest(g0), cards.forest(g0), cards.forest(g0)]
+    deck = [decklist.Forest(g0), decklist.Forest(g0), decklist.Forest(g0)]
     for (i,card) in enumerate(deck):
         card.zone = zone.Deck(0,int(i))
 
@@ -29,7 +29,7 @@ def test_forest():
 
 def test_cast():
     g0 = game.GameState([0])
-    [f1, f2, vt] = deck = [cards.forest(g0), cards.forest(g0), cards.vine_trellis(g0)]
+    [f1, f2, vt] = deck = [decklist.Forest(g0), decklist.Forest(g0), decklist.VineTrellis(g0)]
     vt.zone = zone.Hand(0)
     f1.zone = zone.Field(0)
     f2.zone = zone.Field(0)
@@ -47,8 +47,8 @@ def test_cast():
 
 def test_etb():
     g0 = game.GameState([0])
-    f1 = cards.forest(g0)
-    omens = cards.wall_of_omens(g0)
+    f1 = decklist.Forest(g0)
+    omens = decklist.WallOfOmens(g0)
     assert len(actions.Play.triggers) == 1
 
     f1.zone = zone.Deck(0,0)
@@ -70,9 +70,9 @@ def test_etb():
 
 def test_battlement():
     gs = game.GameState([0])
-    b1 = cards.overgrown_battlement(gs)
+    b1 = decklist.Battlement(gs)
     b1.zone = zone.Field(0)
-    b2 = cards.overgrown_battlement(gs)
+    b2 = decklist.Battlement(gs)
     b2.zone = zone.Field(0)
     ability = b1.abilities.activated[0]
     choice = ability.choices(gs)[0]
@@ -81,15 +81,15 @@ def test_battlement():
 
 def test_saruli():
     gs = game.GameState([0])
-    omens = cards.wall_of_omens(gs)
-    saruli = cards.saruli(gs)
+    omens = decklist.WallOfOmens(gs)
+    saruli = decklist.Saruli(gs)
     omens.zone = zone.Field(0)
     saruli.zone = zone.Field(0)
     saruli_ability = saruli.abilities.activated[0]
     choices = saruli_ability.choices(gs)
     assert len(choices) == 1
     assert len(choices[0]['costs_choice']) == 1
-    o2 = cards.wall_of_omens(gs)
+    o2 = decklist.WallOfOmens(gs)
     o2.zone = zone.Field(0)
     choices = saruli_ability.choices(gs)
     assert len(choices) == 2
