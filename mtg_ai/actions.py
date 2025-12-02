@@ -145,8 +145,8 @@ class ActivatedAbility(Action):
         effects = self.effect.choices(game_state)
         return [{'costs_choice': c, 'effects_choice': e} for (c,e) in product(costs, effects)]
 
-    def do(self, game_state, costs_choice, effects_choice):
-        self.cost.perform(game_state,**costs_choice)
+    def do(self, game_state: GameState, costs_choice, effects_choice):
+        game_state = game_state.take_action(self.cost, costs_choice)
         if self.uses_stack: 
             new_ability = StackAbility(game_state=game_state,
                                    effects=self.effect,
@@ -154,8 +154,8 @@ class ActivatedAbility(Action):
                                    )
             game_state.stack(new_ability)
         else:
-            self.effect.perform(game_state, **effects_choice)
-            return game_state
+            game_state = game_state.take_action(self.effect, effects_choice)
+        return Event(self, game_state)
 
 class Trigger:
     def __init__(self, condition, action, uses_stack=True):
@@ -210,13 +210,13 @@ class Search(Action):
         available = self.search_in(game_state)
         choices = self.search_for(available)
         available = set(available)
-        return [{'found': c, 'rest': available.difference(choices)} for c in choices]
+        options = [{'found': c, 'rest': available.difference(c)} for c in choices]
+        return options 
     
-    def do(self, game_state, found, rest):
-        events = []
+    def do(self, game_state: GameState, found, rest):
         for card in found:
-            events.append(self.to_found.perform(game_state, card=card))
+            game_state = game_state.take_action(self.to_found, {'card': card})
         for card in rest:
-            events.append(self.to_rest.perform(game_state, card=card))
-        return events
+            game_state = game_state.take_action(self.to_rest, {'card': card})
+        return Event(self, game_state)
         

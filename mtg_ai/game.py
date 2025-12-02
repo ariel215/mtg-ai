@@ -32,6 +32,7 @@ class GameState:
             self.objects[uid].move_to(new_game_state)
         self.children.append(new_game_state)
         new_game_state.parent = self
+        new_game_state.triggers = self.triggers
         return new_game_state
 
     def in_zone(self, zone: zones.Zone)->List['GameObject']:
@@ -61,14 +62,16 @@ class GameState:
         new_state = self.take_action(top.effect, choices[0])
         return new_state
 
-    def take_action(self, action, choices: Dict[str, Any] | None = None)->'GameState':
+    def take_action(self, action: 'Action', choices: Dict[str, Any] | None = None)->'GameState':
         choices = choices or {}
         new_state = self.copy()
         event = action.perform(new_state, **choices)
-        event.game_state = new_state
+        new_state = event.game_state
+        print(f"adding triggers for {action}")
         new_state.triggers.extend(
             (event,trigger) for trigger in action.triggers if trigger.condition(event)
         )
+        print(f"len(state.triggers): {len(new_state.triggers)}")
         return new_state
 
     def stack_triggers(self):
@@ -137,11 +140,12 @@ class Action(Protocol):
          ]
  
     def perform(self, game_state, **kwargs) -> Event:
+
         if event := self.do(game_state, **(kwargs | self.params)):
             return event
         return Event(self, game_state)
  
-    def do[T](self, game_state, **kwargs: Choice[T]):
+    def do[T](self, game_state, **kwargs: Choice[T]) -> Event:
         """
         Make the necessary changes to the game state. 
         Each action should have all the information 
@@ -165,12 +169,9 @@ class And(Action):
         for option in combinations]
     
     def do(self, game_state, choices):
-        # todo: this isn't actually the right signature for Action.do()
-        events = [action.perform(game_state,**choice)
-            for action, choice in zip(self.actions, choices)
-        ]
-        # return next(filter(None,events))
-    
+        for action, choice in zip(self.actions, choices):
+            game_state = game_state.take_action(action, choice)
+        return Event(self, game_state)
 
     def __add__(self, other: Action):
         new_action = And(*self.actions)

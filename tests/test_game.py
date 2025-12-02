@@ -170,3 +170,27 @@ def test_coco():
     field = g2.in_zone(zones.Field())
     assert len(field) == 2
     assert all(card.name == "Axebane Guardian" for card in field)
+
+def test_coco_etb():
+    g0 = game.GameState([0])
+    coco = decklist.CollectedCompany(g0)
+    coco.zone = zones.Hand(0)
+    deck = [decklist.Forest(g0) for _ in range(4)] + [decklist.WallOfOmens(g0)]
+    for i,card in enumerate(deck):
+        card.zone = zones.Deck(0, i)
+    g0.mana_pool += mana.Mana(green=4)
+    g1 = g0.take_action(
+        actions.CastSpell(coco),
+        {'mana': g0.mana_pool}
+    )
+    assert isinstance(g1.get(coco).zone, zones.Stack)
+    assert len(g1.in_zone(zones.Stack())) == 1
+    g2 = g1.resolve_stack()
+    field = g2.in_zone(zones.Field())
+    assert len(field) == 1
+    assert len(g2.triggers) == 1
+    g2.stack_triggers()
+    g3 = g2.resolve_stack()
+    assert len(g3.triggers) == 0
+    assert len(g3.in_zone(zones.Hand())) == 1
+    
