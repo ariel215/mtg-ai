@@ -9,9 +9,28 @@ class Mana:
     black: int = 0
     red: int = 0
     green: int = 0
+    gold: int = 0 # stand-in for mana of any color
     colorless: int = 0
     generic: int = 0
-    gold: int = 0 # stand-in for mana of any color
+
+    @classmethod
+    def parse(cls, amount: str):
+        mana = cls()
+        abbreviations = {
+            'w': 'white',
+            'u': 'blue',
+            'b': 'black',
+            'r': 'red',
+            'g': 'green',
+            'a': 'gold', # any color
+            'c': 'colorless'
+        }
+        for char in amount.lower():
+            if field := abbreviations.get(char):
+                setattr(mana, field, getattr(mana, field) + 1)
+            else:
+                mana.generic += int(field)
+        return mana
 
     def __iadd__(self, other):
         for field in asdict(self):

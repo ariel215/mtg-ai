@@ -67,11 +67,9 @@ class GameState:
         new_state = self.copy()
         event = action.perform(new_state, **choices)
         new_state = event.game_state
-        print(f"adding triggers for {action}")
         new_state.triggers.extend(
             (event,trigger) for trigger in action.triggers if trigger.condition(event)
         )
-        print(f"len(state.triggers): {len(new_state.triggers)}")
         return new_state
 
     def stack_triggers(self):

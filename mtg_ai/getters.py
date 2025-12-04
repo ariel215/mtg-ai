@@ -74,13 +74,18 @@ class FromZone:
 
 
 class UpTo:
+    """
+    Get every way to choose n or fewer items from a list that satisfy a predicate
+    Returns an iterator that enumerates all possibilities from most choices
+    to fewest choices
+    """
     def __init__(self, n, predicate):
         self.n = n 
         self.predicate = predicate
     
     def __call__(self, iterable):
         iter_filtered = enumerate(tee(filter(self.predicate, iterable), self.n))
-        return chain.from_iterable(
+        return chain(chain.from_iterable(
             combinations(filtered,self.n - i) 
             for (i,filtered) in iter_filtered
-        )
+        ), [{}])

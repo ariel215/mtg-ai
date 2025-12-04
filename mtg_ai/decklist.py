@@ -15,6 +15,46 @@ class Forest(Card):
             actions.AddMana(mana.Mana(green=1))
         )
 
+class Plains(Card):
+    def __init__(self, game_state):
+        super().__init__( "Plains", (CardType.Land,), game_state=game_state)
+        self.activated(
+            actions.TapSymbol(self),
+            actions.AddMana(mana.Mana(white=1))
+        )
+
+class Island(Card):
+    def __init__(self, game_state):
+        super().__init__( "Island", (CardType.Land,), game_state=game_state)
+        self.activated(
+            actions.TapSymbol(self),
+            actions.AddMana(mana.Mana(blue=1))
+        )
+
+
+class TempleGarden(Card):
+    def __init__(self, game_state):
+        super().__init__( "Temple Garden", (CardType.Land,), game_state=game_state)
+        self.activated(
+            actions.TapSymbol(self),
+            actions.AddMana(mana.Mana(white=1))
+        ).activated(
+            actions.TapSymbol(self),
+            actions.AddMana(mana.Mana(green=1))
+        )
+
+class BreedingPool(Card):
+    def __init__(self, game_state):
+        super().__init__( "Breeding Pool", (CardType.Land,), game_state=game_state)
+        self.activated(
+            actions.TapSymbol(self),
+            actions.AddMana(mana.Mana(blue=1))
+        ).activated(
+            actions.TapSymbol(self),
+            actions.AddMana(mana.Mana(green=1))
+        )
+
+
 class VineTrellis(Card):
     def __init__(self, game_state):
         super().__init__(     
@@ -160,3 +200,54 @@ class CollectedCompany(Card):
                 to_rest=actions.MoveTo(getters.Zone(zones.Deck(),getters.Controller(self),zones.BOTTOM))
             )
         )
+
+class Duskwatch(Card):
+    def __init__(self, game_state: game.GameState):
+        super().__init__(
+            "Duskwatch Recruiter",
+            cost=mana.Mana(green=1,generic=1),
+            types=(CardType.Creature,),
+            game_state=game_state
+        )
+
+        self.activated(
+            cost=actions.PayMana(mana=mana.Mana(generic=2,green=1)),
+            effect=actions.Search(
+                search_in=getters.FromZone(getters.Zone(zones.Deck(), getters.Controller(self)), top=3),
+                search_for=getters.UpTo(1,lambda card: CardType.Creature in card.types),
+                to_found=actions.MoveTo(getters.Zone(zones.Hand(),getters.Controller(self))),
+                to_rest=actions.MoveTo(getters.Zone(zones.Deck(),getters.Controller(self),zones.BOTTOM))
+            ),
+        )
+
+class TrophyMage(Card):
+    def __init__(self, game_state: game.GameState):
+        super().__init__(
+            "Trophy Mage",
+            cost=mana.Mana(blue=1,generic=2),
+            types=(CardType.Creature,),
+            game_state=game_state
+        )
+
+        self.triggered(
+            actions.Play,
+            condition=lambda ev: ev.source.uid == self.uid,
+            action=actions.Search(
+                search_in=getters.FromZone(getters.Zone(zones.Deck(),getters.Controller(self))),
+                search_for=getters.UpTo(1,lambda card: CardType.Artifact in card.types and card.mana_value == 3),
+                to_found=actions.MoveTo(getters.Zone(zones.Hand(),getters.Controller(self))),
+                to_rest=actions.MoveTo(getters.Zone(zones.Deck(),getters.Controller(self),zones.BOTTOM))
+            )
+        )
+
+class Staff(Card):
+    def __init__(self, game_state):
+        super().__init__(
+            "Staff of Domination",
+            mana.Mana(generic=3),
+            types=(CardType.Artifact,),
+            game_state=game_state
+        )
+        # technically this card can do a bunch of stuff,
+        # but the only thing we're interested in right now is 
+        # "does it win the game" and we're going to hack that on separately

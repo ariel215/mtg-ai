@@ -158,9 +158,10 @@ class ActivatedAbility(Action):
         return Event(self, game_state)
 
 class Trigger:
-    def __init__(self, condition, action, uses_stack=True):
+    def __init__(self, condition, action, source, uses_stack=True):
         self.condition = condition
         self.action = action
+        self.source = source
         self.uses_stack = uses_stack
 
     def do(self,game_state: GameState, event):
@@ -180,11 +181,8 @@ class CastSpell(Action):
         if not isinstance(card_zone, zones.Hand):
             return []
 
-        # if card_zone.owner != game_state.priority:
-        #     return []
-
         if game_state.mana_pool.can_pay(card.cost):
-            # todo: compute all the ways to pay given the mana available
+            # todo: compute all the ways to pay given the mana available?
             return [{'mana': card.cost}]
         else:
             return []
@@ -220,3 +218,20 @@ class Search(Action):
             game_state = game_state.take_action(self.to_rest, {'card': card})
         return Event(self, game_state)
         
+class PayMana(Action):
+    mana = Get()
+    def __init__(self, mana=None):
+        super().__init__()
+        self.mana = mana
+
+    def choices(self, game_state: GameState):
+        mana = self.mana(game_state)
+        if game_state.mana_pool.can_pay(mana): 
+            return [{'mana': self.mana(game_state)}]
+        else:
+            return []
+        
+    def do(self, game_state: GameState, mana: Mana):
+        game_state.mana_pool -= mana
+
+    

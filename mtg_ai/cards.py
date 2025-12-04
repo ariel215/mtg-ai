@@ -58,6 +58,15 @@ class Card(game.GameObject):
             return dest
 
     def activated(self, cost: game.Action, effect: game.Action, uses_stack: bool=False):
+        """
+        Add an activated ability to this card.
+
+        Params:
+        cost: the action that must be taken to activate the ability
+        effect: the action that is performed by the ability
+        uses_stack: whether the ability is put on the stack. Mana abilities and 
+        special actions do not use the stack.
+        """
         self.abilities.activated.append(actions.ActivatedAbility(
             cost=cost,
             effect=effect,
@@ -66,19 +75,30 @@ class Card(game.GameObject):
         return self
 
     def triggered(self, when: type[game.Action], condition, action: actions.Action):
-        when.triggers.append(actions.Trigger(condition=condition, action=action))
+        """
+        Add a triggered ability to this card.
+        """
+        when.triggers.append(actions.Trigger(condition=condition, action=action, source=self))
         return self
     
     def with_effect(self,effect: actions.Action):
+        """
+        Add an effect that happens when this card resolves. 
+        This is mostly for instants and sorceries, but is also used to implement
+        choices that are made as a permanent enters the battlefield, such as shocklands
+        and Cavern of Souls.
+        """
         self._effect = effect if self._effect is None else self._effect + effect
-
-    @property
-    def summoning_sick(self):
-        return self.permanent and self.permanent.summoning_sick
 
     @property
     def controller(self):
         return self.zone.owner
+    
+    @property
+    def mana_value(self):
+        if self.cost is None:
+            return 0
+        return self.cost.mana_value
             
     def make_permanent(self):
         self.permanent = True

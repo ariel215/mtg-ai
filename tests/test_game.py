@@ -194,3 +194,43 @@ def test_coco_etb():
     assert len(g3.triggers) == 0
     assert len(g3.in_zone(zones.Hand())) == 1
     
+
+def test_duskwatch():
+    g0 = game.GameState([0])
+    dw = decklist.Duskwatch(g0)
+    deck = [decklist.Forest(g0), decklist.Arcades(g0), decklist.Forest(g0)]
+    for (i,card) in enumerate(deck):
+        card.zone = zones.Deck(0,i)
+    dw.zone = zones.Field(0)
+    g0.mana_pool = mana.Mana(green=3)
+    ability = dw.abilities.activated[0]
+    choice = next(iter(ability.choices(g0)))
+    g1 = g0.take_action(ability,choice)
+    assert zones.Hand(0).contains(g1.get(deck[1]))
+    assert len(g1.in_zone(zones.Deck(0))) == 2
+
+def test_duskwatch_miss():
+    g0 = game.GameState([0])
+    dw = decklist.Duskwatch(g0)
+    deck = [decklist.Forest(g0), decklist.Forest(g0), decklist.Forest(g0)]
+    for (i,card) in enumerate(deck):
+        card.zone = zones.Deck(0,i)
+    dw.zone = zones.Field(0)
+    g0.mana_pool = mana.Mana(green=3)
+    ability = dw.abilities.activated[0]
+    choice = next(iter(ability.choices(g0)))
+    g1 = g0.take_action(ability,choice)
+    assert len(g1.in_zone(zones.Deck(0))) == 3
+
+def test_trophy_mage():
+    g0 = game.GameState([0])
+    tm = decklist.TrophyMage(g0)
+    deck = [decklist.Staff(g0), decklist.Forest(g0), decklist.Forest(g0)]
+    for (i,card) in enumerate(deck):
+        card.zone = zones.Deck(0,i)
+    tm.zone = zones.Hand(0)
+    g1 = g0.take_action(actions.Play(tm), {})
+    g1.stack_triggers()
+    g2 = g1.resolve_stack()
+    assert zones.Hand(0).contains(g2.get(deck[0]))
+
