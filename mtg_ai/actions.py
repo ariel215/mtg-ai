@@ -1,10 +1,8 @@
-from mtg_ai import getters
-from mtg_ai.game import GameState, Action, ChoiceSet, Event, StackAbility
+from mtg_ai.game import GameState, Action, ChoiceSet, Event, StackAbility, CardType
 from mtg_ai import zones
 from mtg_ai.mana import Mana
 from itertools import product
 from mtg_ai.getters import Get
-
 
 
 class Draw(Action):
@@ -44,9 +42,11 @@ class Play(Action):
     def choices(self, _game_state):
         return [{'card': self.card}] # todo: does the card need to make choices as it enters?
     
-    def do(self, game_state, card):
+    def do(self, game_state: GameState, card):
         card = game_state.get(card)
         card.zone = zones.Field(owner=card.zone.owner)
+        if CardType.Creature in card.types:
+            game_state.summoning_sick.add(card)
         return Event(self, game_state, source=card,cause=card)
     
 class MoveTo(Action):
@@ -90,9 +90,9 @@ class TapSymbol(Action):
         """
         self.card = target
     
-    def choices(self, game_state):
+    def choices(self, game_state: GameState):
         card = game_state.get(self.card)
-        return [] if card.tapped else [{}]
+        return [] if card.tapped or card in game_state.summoning_sick else [{}]
 
     def do(self, game_state):
         game_state.get(self.card).tapped = True
@@ -234,4 +234,17 @@ class PayMana(Action):
     def do(self, game_state: GameState, mana: Mana):
         game_state.mana_pool -= mana
 
+
+class EndTurn(Action):
+    def __init__(self):
+        super().__init__()
+
+    def choices(self, _game_state):
+        return [{}]
     
+    def do(self,game_state: GameState):
+        game_state.mana_pool = Mana()
+        for card in game_state.in_zone(zones.Field()):
+            card.tapped = False
+        game_state.summoning_sick.clear()
+        game_state.turn_number += 1

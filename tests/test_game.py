@@ -20,7 +20,6 @@ def test_forest():
     assert len(g0.objects) == 3
     assert len(g1.objects) == 3
     assert isinstance(g1.get(f1).zone, zones.Field)
-    assert g1.get(f1).permanent is not None
     choices = t_add_g.choices(g1)
     assert choices
     g2 = g1.take_action(t_add_g, choices[0])    
@@ -42,7 +41,6 @@ def test_cast():
     g1 = g0.take_action(f1.abilities.activated[0],choices)
     g2 = g1.take_action(f2.abilities.activated[0],choices)
     cast_spell = actions.CastSpell(vt)
-    choice = cast_spell.choices(g2)[0]
     g3 = g2.take_action(actions.CastSpell(vt).bind(mana=g2.mana_pool),{})
 
     vt = g3.get(vt)
@@ -234,3 +232,22 @@ def test_trophy_mage():
     g2 = g1.resolve_stack()
     assert zones.Hand(0).contains(g2.get(deck[0]))
 
+def test_summoning_sickness():
+    gs = game.GameState([0])
+    b1 = decklist.Battlement(gs)
+    b1.zone = zones.Field(0)
+    b2 = decklist.Battlement(gs)
+    b2.zone = zones.Hand(0)
+    f1 = decklist.Forest(gs)
+    f1.zone = zones.Hand(0)
+
+    ability = b2.abilities.activated[0]
+    gs = gs.take_action(actions.Play(card=b2),{})
+    # should not be able to activate b2 the turn it comes into play
+    assert not ability.choices(gs)
+    gs = gs.take_action(actions.EndTurn(),{})
+    # can activate it on subsequent turns
+    assert ability.choices(gs)
+    # noncreatures don't have summoning sickness
+    gs = gs.take_action(actions.Play(card=f1),{})
+    assert f1.abilities.activated[0].choices(gs)

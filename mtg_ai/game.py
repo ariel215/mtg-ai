@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 from itertools import product
 from typing import Protocol, TypeVar, Optional, List, Dict, Any
 from . import zones
@@ -16,20 +17,23 @@ class Event:
 
 class GameState:
 
-    def __init__(self,players: List[Player], mana_pool: Optional['Mana']=None):
+    def __init__(self,players: List[Player], mana_pool: Optional['Mana']=None, turn_number=0):
         self.objects = {}
         self.players = players
         self.mana_pool = mana_pool or Mana()
         self.parent = None
         self.children = []
         self.triggers = [] # triggers waiting to go onto the stack
+        self.turn_number = turn_number
+        self.summoning_sick = set() # summoning sick cards
         
             
     def copy(self) -> 'GameState':
-        new_game_state = GameState(self.players,self.mana_pool.copy())
+        new_game_state = GameState(self.players,self.mana_pool.copy(), self.turn_number)
         uids = [uid for uid in self.objects]
         for uid in uids:
             self.objects[uid].move_to(new_game_state)
+        new_game_state.summoning_sick = {new_game_state.get(card) for card in self.summoning_sick}
         self.children.append(new_game_state)
         new_game_state.parent = self
         new_game_state.triggers = self.triggers
@@ -206,3 +210,13 @@ class StackAbility(GameObject):
         ability.zone=self.zone
         ability.effect = self.effect
         return ability
+
+
+class CardType(str, Enum):
+    Land = "land"
+    Creature = "creature"
+    Instant = "instant"
+    Sorcery = "sorcery"
+    Artifact = "artifact"
+
+SPELL_TYPES = {CardType.Instant, CardType.Sorcery}

@@ -1,19 +1,11 @@
-from mtg_ai import game, actions, getters, mana, zones
+from mtg_ai import game, actions, mana, zones
+from mtg_ai.game import CardType, SPELL_TYPES
 from typing import Iterable, Optional, TypeVar
 from dataclasses import dataclass, field
 from enum import Enum
 
 Action = TypeVar('Action')
 
-
-class CardType(str, Enum):
-    Land = "land"
-    Creature = "creature"
-    Instant = "instant"
-    Sorcery = "sorcery"
-    Artifact = "artifact"
-
-SPELL_TYPES = {CardType.Instant, CardType.Sorcery}
 
 class Card(game.GameObject):
     cards = {}
@@ -32,7 +24,6 @@ class Card(game.GameObject):
                  abilities: Optional[Abilities] = None,
                  effect: Optional[Action] = None,
                  zone:Optional[zones.Zone]=None,
-                 permanent: bool = False,
                  tapped: bool = False,
                  game_state: Optional[game.GameState] = None,
              ):
@@ -43,7 +34,6 @@ class Card(game.GameObject):
         self.name = name
         self.types = set(types)
         self.subtypes = set(st.lower() for st in subtypes)
-        self.permanent = permanent
         self.tapped = tapped
         self.abilities = abilities or Card.Abilities()
         self._effect = effect
@@ -100,12 +90,6 @@ class Card(game.GameObject):
             return 0
         return self.cost.mana_value
             
-    def make_permanent(self):
-        self.permanent = True
-
-    def del_permanent(self):
-        self.permanent = False
-
     def copy(self):
         return Card(name=self.name,
                     types=self.types,
@@ -114,7 +98,6 @@ class Card(game.GameObject):
                     abilities=self.abilities,
                     effect=self._effect,
                     zone=self.zone,
-                    permanent=self.permanent,
                     tapped=self.tapped,
                     game_state=self.game_state)
 
