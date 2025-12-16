@@ -9,7 +9,9 @@ def tap_mana(card,mana) -> actions.ActivatedAbility:
 
 class Forest(Card):
     def __init__(self, game_state):
-        super().__init__( "Forest", (CardType.Land,), game_state=game_state)
+        super().__init__( "Forest", 
+                         types=(CardType.Land,), 
+                         game_state=game_state)
         self.activated(
             actions.TapSymbol(self),
             actions.AddMana(mana.Mana(green=1))
@@ -17,7 +19,7 @@ class Forest(Card):
 
 class Plains(Card):
     def __init__(self, game_state):
-        super().__init__( "Plains", (CardType.Land,), game_state=game_state)
+        super().__init__( "Plains", types=(CardType.Land,), game_state=game_state)
         self.activated(
             actions.TapSymbol(self),
             actions.AddMana(mana.Mana(white=1))
@@ -25,7 +27,7 @@ class Plains(Card):
 
 class Island(Card):
     def __init__(self, game_state):
-        super().__init__( "Island", (CardType.Land,), game_state=game_state)
+        super().__init__( "Island", types=(CardType.Land,), game_state=game_state)
         self.activated(
             actions.TapSymbol(self),
             actions.AddMana(mana.Mana(blue=1))
@@ -34,7 +36,7 @@ class Island(Card):
 
 class TempleGarden(Card):
     def __init__(self, game_state):
-        super().__init__( "Temple Garden", (CardType.Land,), game_state=game_state)
+        super().__init__( "Temple Garden", types=(CardType.Land,), game_state=game_state)
         self.activated(
             actions.TapSymbol(self),
             actions.AddMana(mana.Mana(white=1))
@@ -45,7 +47,7 @@ class TempleGarden(Card):
 
 class BreedingPool(Card):
     def __init__(self, game_state):
-        super().__init__( "Breeding Pool", (CardType.Land,), game_state=game_state)
+        super().__init__( "Breeding Pool", types=(CardType.Land,), game_state=game_state)
         self.activated(
             actions.TapSymbol(self),
             actions.AddMana(mana.Mana(blue=1))
@@ -69,6 +71,20 @@ class VineTrellis(Card):
             actions.AddMana(mana.Mana(green=1))
         )
 
+
+class WallOfRoots(Card):
+    def __init__(self, game_state):
+        super().__init__(     
+            name="Wall of Roots",
+            types=(CardType.Creature,),
+            subtypes=("wall",),
+            cost=mana.Mana(green=1,generic=1),
+            game_state=game_state)
+        # Todo: make this do the right thing
+        self.activated(
+            actions.Tap(lambda card: card.uid == self.uid) + actions.AddCounter(self,"-0/-1", zones.Field()), 
+            actions.AddMana(mana.Mana(green=1))
+        )
 
 class WallOfOmens(Card):
     def __init__(self, game_state):
@@ -162,12 +178,17 @@ class Saruli(Card):
             name="Saruli Caretaker",
             types=(CardType.Creature,),
             subtypes=("wall",),
+            cost=mana.Mana(green=1),
             game_state=game_state
         )
         self.activated(
             cost=game.And(
                 actions.TapSymbol(self),
-                actions.Tap(lambda card: CardType.Creature in card.types and card.uid != self.uid)
+                actions.Tap(lambda card: (
+                    zones.Field().contains(card) 
+                    and CardType.Creature in card.types 
+                    and card.uid != self.uid)
+                )
             ),
             effect=actions.AddMana(mana.Mana(green=1))
         )
@@ -251,3 +272,10 @@ class Staff(Card):
         # technically this card can do a bunch of stuff,
         # but the only thing we're interested in right now is 
         # "does it win the game" and we're going to hack that on separately
+
+
+def build_deck(card_types, game_state, player):
+    cards = [ty(game_state) for ty in card_types]
+    for card in cards: 
+        card.zone = zones.Deck(player)
+    return cards

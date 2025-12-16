@@ -73,6 +73,11 @@ class FromZone:
         return zone
 
 
+class ActivePlayer:
+    def __call__(self,game_state):
+        return game_state.players[game_state.active_player]
+    
+
 class UpTo:
     """
     Get every way to choose n or fewer items from a list that satisfy a predicate

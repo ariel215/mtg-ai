@@ -1,4 +1,4 @@
-from mtg_ai import cards, game, actions, zones, mana, decklist
+from mtg_ai import cards, game, actions, getters, zones, mana, decklist
 
 
 def setup_function(fun):
@@ -12,11 +12,12 @@ def test_forest():
         card.zone = zones.Deck(0,int(i))
 
     [f1, f2, f3] = deck
+    f1.zone = zones.Hand(0)
     t_add_g = f1.abilities.activated[0]
 
     assert len(g0.objects) == 3 
     
-    g1 = g0.take_action(actions.Play(f1))
+    g1 = g0.take_action(actions.PlayLand(f1))
     assert len(g0.objects) == 3
     assert len(g1.objects) == 3
     assert isinstance(g1.get(f1).zone, zones.Field)
@@ -251,3 +252,11 @@ def test_summoning_sickness():
     # noncreatures don't have summoning sickness
     gs = gs.take_action(actions.Play(card=f1),{})
     assert f1.abilities.activated[0].choices(gs)
+
+def test_end_turn():
+    gs = game.GameState([0])
+    [forest] = decklist.build_deck([decklist.Forest],gs, 0)
+    end_turn = actions.EndTurn() + actions.Draw(getters.ActivePlayer())
+    choices = end_turn.choices(gs)[0]
+    gs = gs.take_action(end_turn, choices)
+    assert zones.Hand().contains(gs.get(forest))

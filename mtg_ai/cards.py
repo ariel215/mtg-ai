@@ -1,3 +1,4 @@
+from collections import defaultdict
 from mtg_ai import game, actions, mana, zones
 from mtg_ai.game import CardType, SPELL_TYPES
 from typing import Iterable, Optional, TypeVar
@@ -36,7 +37,9 @@ class Card(game.GameObject):
         self.subtypes = set(st.lower() for st in subtypes)
         self.tapped = tapped
         self.abilities = abilities or Card.Abilities()
+        self.counters = defaultdict(lambda: 0)
         self._effect = effect
+
         
     @property
     def effect(self):
@@ -106,6 +109,17 @@ class Card(game.GameObject):
 
     def __repr__(self):
         return str(self)
+    
+    def __hash__(self):
+        return hash(
+            (self.name,
+            self.zone,
+            self.tapped
+            )
+        )
+
+    def __eq__(self, value):
+        return type(self) is type(value) and hash(self) == hash(value)
     
 
 # -------------------------------------------------

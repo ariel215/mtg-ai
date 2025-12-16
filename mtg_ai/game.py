@@ -1,6 +1,7 @@
+from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from itertools import product
+from itertools import chain, product
 from typing import Protocol, TypeVar, Optional, List, Dict, Any
 from . import zones
 from .mana import Mana
@@ -21,12 +22,21 @@ class GameState:
         self.objects = {}
         self.players = players
         self.mana_pool = mana_pool or Mana()
+        self.turn_number = turn_number
         self.parent = None
         self.children = []
         self.triggers = [] # triggers waiting to go onto the stack
-        self.turn_number = turn_number
         self.summoning_sick = set() # summoning sick cards
-        
+        self.land_drops = 1
+        self.active_player = 0
+
+    def __hash__(self):
+        return hash(
+            tuple(chain((self.mana_pool, self.active_player),self.objects.values()))
+        )
+    
+    def __eq__(self, value):
+        return type(self) is type(value) and hash(self) == hash(value)
             
     def copy(self) -> 'GameState':
         new_game_state = GameState(self.players,self.mana_pool.copy(), self.turn_number)
@@ -66,9 +76,9 @@ class GameState:
         new_state = self.take_action(top.effect, choices[0])
         return new_state
 
-    def take_action(self, action: 'Action', choices: Dict[str, Any] | None = None)->'GameState':
+    def take_action(self, action: 'Action', choices: Dict[str, Any] | None = None, copy:bool=True)->'GameState':
         choices = choices or {}
-        new_state = self.copy()
+        new_state = self.copy() if copy else self
         event = action.perform(new_state, **choices)
         new_state = event.game_state
         new_state.triggers.extend(
@@ -110,7 +120,7 @@ T = TypeVar('T')
 type Choice[T] = Dict[str, T]
 type ChoiceSet[T] = List[Choice[T]]
 
-class Action(Protocol):
+class Action:
     def __init__(self):
          self.params = {}
  
@@ -131,7 +141,7 @@ class Action(Protocol):
         Each element of the ChoiceList should be a dictionary whose 
         keys are the same as the keyword arguments to `do()`.
         """
-        ...
+        raise NotImplemented
  
     def choose(self, game_state):
          # cls.choices() should not let you choose anything set in self.params
@@ -153,7 +163,7 @@ class Action(Protocol):
         Each action should have all the information 
         needed to make its constituent changes.
         """
-        ...
+        raise NotImplemented
     
     def __add__(self, other: 'Action') -> 'And':
         return And(self, other)

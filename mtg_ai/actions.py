@@ -1,8 +1,22 @@
+from typing import List
 from mtg_ai.game import GameState, Action, ChoiceSet, Event, StackAbility, CardType
 from mtg_ai import zones
 from mtg_ai.mana import Mana
 from itertools import product
 from mtg_ai.getters import Get
+
+
+def possible_actions(game_state: GameState) -> List[Action]:
+    player = game_state.players[game_state.active_player]
+    hand = game_state.in_zone(zones.Hand(player))
+    field = game_state.in_zone(zones.Field(player))
+    field_abilities = [ability for card in field for ability in card.abilities.activated]
+    return list(
+        filter(
+            lambda action: len(action.choices(game_state)) > 0, 
+            [PlayLand(card) if CardType.Land in card.types else CastSpell(card) for card in hand ] + field_abilities
+        )
+    )
 
 
 class Draw(Action):
@@ -193,6 +207,25 @@ class CastSpell(Action):
         game_state.stack(card)
         return Event(self,game_state,source=card,cause=card)
 
+class PlayLand(Action):
+    def __init__(self, card):
+        super().__init__()
+        self.card = card
+    
+    def choices(self, game_state):
+        card = game_state.get(self.card)
+        if not zones.Hand().contains(card):
+            return []
+        if game_state.land_drops == 0:
+            return []
+        else: 
+            return [{}]
+    
+    def do(self, game_state):
+        game_state.land_drops -= 1
+        game_state = game_state.take_action(Play(self.card), {})
+        return Event(self, game_state)
+
 class Search(Action):
     search_in = Get()
     search_for = Get()
@@ -234,6 +267,25 @@ class PayMana(Action):
     def do(self, game_state: GameState, mana: Mana):
         game_state.mana_pool -= mana
 
+class AddCounter(Action):
+
+    def __init__(self, card, counter, zone=zones.Any()):
+        super().__init__()
+        self.counter = counter
+        self.card = card
+        self.zone = zone
+
+    def choices(self,game_state):
+        if self.zone.contains(game_state.get(self.card)):
+            return [{}]
+        else:
+            return []
+    
+    def do(self,game_state):
+        card = game_state.get(self.card)
+        card.counters[self.counter] += 1
+
+
 
 class EndTurn(Action):
     def __init__(self):
@@ -248,3 +300,7 @@ class EndTurn(Action):
             card.tapped = False
         game_state.summoning_sick.clear()
         game_state.turn_number += 1
+        game_state.land_drops = 1
+        game_state.active_player += 1
+        game_state.active_player %= len(game_state.players)
+        

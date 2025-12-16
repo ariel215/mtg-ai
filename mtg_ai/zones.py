@@ -21,6 +21,16 @@ class Zone:
 
     def copy(self):
         return type(self)(self.owner, self.position)
+    
+    def __hash__(self):
+        return hash(
+            (type(self),
+            self.owner,
+            self.position)
+        )
+    
+    def __eq__(self, value):
+        return hash(self) == hash(value)
 
 class Grave(Zone):
     pass
@@ -38,7 +48,8 @@ class Stack(Zone):
     pass
 
 class Any(Zone):
-    pass
+    def contains(self, _card):
+        return True
 
 
 class TOP:
