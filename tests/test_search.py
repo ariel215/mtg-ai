@@ -52,4 +52,3 @@ def test_search():
         return game_state.mana_pool.green == 8
     result = search.bfs(gs, condition,timeout=5000)
     assert result.final_state is not None
-

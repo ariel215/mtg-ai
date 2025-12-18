@@ -44,8 +44,8 @@ def bfs(initial: GameState, condition, timeout=int(1e6)) -> SearchResult:
                 choices = action.choices(next_state)
                 for choice in choices:
                     child = next_state.take_action(action, choice)
-                    if child.in_zone(zones.Stack()):
-                        child = child.resolve_stack()
+                    while child.in_zone(zones.Stack()):
+                        child = child.resolve_stack() #todo: make this an Action
                     if condition(child):
                         return SearchResult(child,queue,i)
                     elif child not in seen:
