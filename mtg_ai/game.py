@@ -180,7 +180,9 @@ class And(Action):
         return [{'choices': option }
         for option in combinations]
     
-    def do(self, game_state, choices):
+    def do(self, game_state, choices=None):
+        if choices is None:
+            choices = ({} for _ in self.actions)
         for action, choice in zip(self.actions, choices):
             game_state = game_state.take_action(action, choice)
         return Event(self, game_state)

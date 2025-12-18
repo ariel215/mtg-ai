@@ -122,30 +122,4 @@ class Card(game.GameObject):
         return type(self) is type(value) and hash(self) == hash(value)
     
 
-# -------------------------------------------------
-
-# Cards in walls: 
-
-# [x] Caretaker
-# [x] Caryatid
-# Roots
-# [x] Battlement
-# [x] Axebane
-# [x] Blossoms
-# [x] Arcades
-# Recruiter
-# TrophyMage
-# Staff
-# Company
-
-# [x] Forest
-# [x] Plains
-# [x] Island
-# TempleGarden
-# BreedingPool
-# HallowedFountain
-# WindsweptHeath
-# Westvale
-# Wildwoods
-# LumberingFalls
 

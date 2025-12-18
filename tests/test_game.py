@@ -260,3 +260,18 @@ def test_end_turn():
     choices = end_turn.choices(gs)[0]
     gs = gs.take_action(end_turn, choices)
     assert zones.Hand().contains(gs.get(forest))
+
+def test_fetch():
+    gs = game.GameState([0])
+    decklist.build_deck([decklist.Island, decklist.Forest] + [decklist.Island for _ in range(4)],
+    gs, 0)
+    fetch = decklist.WindsweptHeath(gs)
+    fetch.zone = zones.Field(0)
+    ability = fetch.abilities.activated[0]
+    choice = ability.choices(gs)[0]
+    gs = gs.take_action(ability, choice)
+    fetch = gs.get(fetch)
+    assert zones.Grave(0).contains(fetch)
+    field = gs.in_zone(zones.Field())
+    assert len(field) == 1
+    assert "forest" in field[0].subtypes

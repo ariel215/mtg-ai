@@ -1,12 +1,16 @@
 from typing import List
 from mtg_ai.game import GameState, Action, ChoiceSet, Event, StackAbility, CardType
-from mtg_ai import zones
+from mtg_ai import zones, getters
 from mtg_ai.mana import Mana
 from itertools import product
 from mtg_ai.getters import Get
 
 
 def possible_actions(game_state: GameState) -> List[Action]:
+    """
+    List the actions available to the player with priority 
+    in the current game state
+    """
     player = game_state.players[game_state.active_player]
     hand = game_state.in_zone(zones.Hand(player))
     field = game_state.in_zone(zones.Field(player))
@@ -62,15 +66,22 @@ class Play(Action):
         if CardType.Creature in card.types:
             game_state.summoning_sick.add(card)
         return Event(self, game_state, source=card,cause=card)
-    
+
 class MoveTo(Action):
     zone = Get()
-    def __init__(self, zone):
+    card = Get()
+
+    def __init__(self, zone, card=None):
         super().__init__()
         self.zone = zone
+        self.card = card
 
-    def choices(self, _game_state):
-        return [{}]
+    def choices(self, game_state):
+        card = self.card(game_state)
+        if card:
+            return [{'card': self.card(game_state)}]
+        else:
+            return [{}]
 
     def do(self, game_state,card):
         zone = self.zone(game_state)
@@ -94,6 +105,24 @@ class MoveTo(Action):
             
         card = game_state.get(card)
         card.zone = zone
+
+
+class Sacrifice(Action):
+    def __init__(self, card):
+        super().__init__()
+        self.action = MoveTo(getters.Zone(zones.Grave(),getters.Controller(card)),card)
+    
+    def choices(self,game_state):
+        card = self.action.card(game_state)
+        if card and zones.Field().contains(card):
+            return self.action.choices(game_state)
+        else:
+            return []
+
+    def do(self, game_state, card):
+        gs = game_state.take_action(self.action,{'card': card})
+        return Event(self, gs)
+
 
 class TapSymbol(Action):
     def __init__(self, target):
@@ -230,7 +259,15 @@ class Search(Action):
     search_in = Get()
     search_for = Get()
 
-    def __init__(self, search_in, search_for, to_found, to_rest):
+    def __init__(self, search_in, search_for, to_found: Action, to_rest: Action):
+        """
+        Parameters
+        ---------
+        search_in: a getter that returns a list of cards
+        search_for: a function that takes a list of cards and filters is
+        to_found: the action to be performed to each card that is chosen
+        to_rest: the action to be performed to each card that is not chosen
+        """
         super().__init__()
         self.search_in = search_in
         self.search_for = search_for
@@ -249,6 +286,13 @@ class Search(Action):
             game_state = game_state.take_action(self.to_found, {'card': card})
         for card in rest:
             game_state = game_state.take_action(self.to_rest, {'card': card})
+        return Event(self, game_state)
+
+class Shuffle(Action):
+    def choices(self,game_state):
+        return [{}]
+
+    def do(self, game_state,**kwargs): # this is a terrible hack
         return Event(self, game_state)
         
 class PayMana(Action):
