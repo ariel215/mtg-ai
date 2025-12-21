@@ -112,7 +112,7 @@ class GameObject:
         return cpy
     
     def copy(self) -> 'GameObject':
-        raise NotImplemented
+        raise NotImplementedError()
 
 
 
@@ -141,7 +141,7 @@ class Action:
         Each element of the ChoiceList should be a dictionary whose 
         keys are the same as the keyword arguments to `do()`.
         """
-        raise NotImplemented
+        raise NotImplementedError()
  
     def choose(self, game_state):
          # cls.choices() should not let you choose anything set in self.params
@@ -163,7 +163,7 @@ class Action:
         Each action should have all the information 
         needed to make its constituent changes.
         """
-        raise NotImplemented
+        raise NotImplementedError()
     
     def __add__(self, other: 'Action') -> 'And':
         return And(self, other)

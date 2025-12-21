@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 import collections
 from dataclasses import dataclass
 from typing import List
@@ -6,17 +7,18 @@ from mtg_ai.game import GameState
 
 @dataclass
 class SearchResult:
-    final_state: GameState
-    remaining: List[GameState]
+    final_state: GameState | None
+    remaining: Iterable[GameState]
     n_iters: int
 
 def staff_victory(game: GameState) -> bool:
     field = game.in_zone(zones.Field())
-    staff = [card for card in field if isinstance(card, decklist.Staff)]
-    if not staff: 
+    staff = [card for card in field if card.name == "Staff of Domination"]
+    if not staff:
         return False
     
-    scalers = [card for card in field if isinstance(card, (decklist.Battlement, decklist.Axebane))]
+    scalers = [card for card in field 
+        if card.name in ("Overgrown Battlement", "Axebane Guardian") ]
     if not scalers:
         return False
     
@@ -54,4 +56,4 @@ def bfs(initial: GameState, condition, timeout=int(1e6)) -> SearchResult:
         if i % 100 == 0:
             pass 
     else:
-        return (None, queue,i)
+        return SearchResult(None, queue,i)
