@@ -1,19 +1,50 @@
 from collections import defaultdict
 from mtg_ai import game, actions, mana, zones
-from mtg_ai.game import CardType, SPELL_TYPES
-from typing import Iterable, Optional, TypeVar
+from mtg_ai.game import CardType, SPELL_TYPES, StaticAbility, StaticEffect
+from typing import Iterable, Optional, TypeVar, Set, List, Callable
 from dataclasses import dataclass, field
-from enum import Enum
 
 Action = TypeVar('Action')
 
 
 class Card(game.GameObject):
     cards = {}
+
+    class GetProperty[T]:
+        """
+        Many properties of a Card can be modified by ongoing static effects.
+        This descriptor allows those properties to be affected by other things
+        in the GameState.
+        """
+
+        def __set_name__(self, owner: 'Card', name: str):
+            self.private_name = f"_{name}"
+            self.public_name = name
+
+        def __set__(self, owner: 'Card', value: T):
+            raise AttributeError("Cannot set a card property directly. Set base instead.")
+
+        def __get__(self, owner: 'Card', _objname) -> T:
+            base = getattr(owner, self.private_name, None)
+            if base is None:
+                return None
+            for effect in owner.game_state.active_effects:
+                if effect.property_name == self.public_name and effect.condition(owner):
+                    # TODO: if condition cares about this properly, we will get an infinite loop
+                    base = effect.modification(base)
+            return base
+
+    power = GetProperty()
+    toughness = GetProperty()
+    types = GetProperty()
+    subtypes = GetProperty()
+    abilities = GetProperty()
+    keywords = GetProperty()
+
     @dataclass
     class Abilities:
-        static: list = field(default_factory=list)
-        activated: list = field(default_factory=list)
+        static: List[game.StaticAbility] = field(default_factory=list) # includes triggered
+        activated: List[actions.ActivatedAbility] = field(default_factory=list)
 
     def __init_subclass__(cls):
         Card.cards[cls.__name__] = cls
@@ -26,6 +57,9 @@ class Card(game.GameObject):
                  effect: Optional[Action] = None,
                  zone:Optional[zones.Zone]=None,
                  tapped: bool = False,
+                 power: Optional[int] = None,
+                 toughness: Optional[int] = None,
+                 keywords: Iterable[str] = (),
                  game_state: Optional[game.GameState] = None,
              ):
 
@@ -33,12 +67,15 @@ class Card(game.GameObject):
         self.cost = cost
         self.zone = zone 
         self.name = name
-        self.types = set(types)
-        self.subtypes = set(st.lower() for st in subtypes)
+        self._types = set(types)
+        self._subtypes: Set[str] = set(st.lower() for st in subtypes)
         self.tapped = tapped
-        self.abilities = abilities or Card.Abilities()
+        self._abilities = abilities or Card.Abilities()
         self.counters = defaultdict(lambda: 0)
         self._effect = effect
+        self._power: Optional[int] = power
+        self._toughness: Optional[int] = toughness
+        self._keywords: Set[str] = set(kw.lower() for kw in keywords)
 
         
     @property
@@ -71,7 +108,23 @@ class Card(game.GameObject):
         """
         Add a triggered ability to this card.
         """
-        when.triggers.append(actions.Trigger(condition=condition, action=action, source=self))
+        trigger = actions.Trigger(when=when, condition=condition, action=action, source=self)
+        self.abilities.static.append(StaticAbility(active_zone=zones.Field(),
+                                                   source=self,
+                                                   trigger=trigger))
+        return self
+
+    def static(self, condition: 'Callable[[Card], bool]', property_name: str, modification: Callable):
+        """
+        Add a static ability to this card.
+        """
+        effect = StaticEffect(game_state=self.game_state,
+                              condition=condition,
+                              property_name=property_name,
+                              modification=modification)
+        self.abilities.static.append(StaticAbility(active_zone=zones.Field(),
+                                                   source=self,
+                                                   effect=effect))
         return self
     
     def with_effect(self,effect: actions.Action):
@@ -95,14 +148,18 @@ class Card(game.GameObject):
             
     def copy(self):
         return Card(name=self.name,
-                    types=self.types,
-                    subtypes=self.subtypes,
+                    types=self._types,
+                    subtypes=self._subtypes,
                     cost=self.cost,
-                    abilities=self.abilities,
+                    abilities=self._abilities,
                     effect=self._effect,
                     zone=self.zone,
                     tapped=self.tapped,
-                    game_state=self.game_state)
+                    game_state=self.game_state,
+                    power=self._power,
+                    toughness=self._toughness,
+                    keywords=self._keywords,
+                    )
 
     def __str__(self):
         return f"[{self.name}@{self.zone}]"

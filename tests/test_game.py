@@ -1,8 +1,11 @@
 from mtg_ai import cards, game, actions, getters, zones, mana, decklist
+from mtg_ai.game import StaticEffect, StaticAbility
 
 
 def setup_function(fun):
-    actions.Play.triggers.clear()
+    # setup_function(None)
+    StaticAbility.triggers = []
+    StaticAbility.triggers = []
 
 
 def test_forest():
@@ -53,13 +56,16 @@ def test_etb():
     g0 = game.GameState([0])
     f1 = decklist.Forest(g0)
     omens = decklist.WallOfOmens(g0)
-    assert len(actions.Play.triggers) == 1
+    assert len(g0.active_triggers) == 0
 
     f1.zone = zones.Deck(0,0)
     omens.zone = zones.Hand(0)
 
     g1 = g0.take_action(actions.Play(omens))
+    assert len(g0.triggers) == 0
     assert len(g1.triggers) == 1
+    assert len(g0.active_triggers) == 0
+    assert len(g1.active_triggers) == 1
     g1.stack_triggers()
     assert len(g1.triggers) == 0
     stack = g1.in_zone(zones.Stack()) 
@@ -117,19 +123,26 @@ def test_arcades():
     g0 = game.GameState([0])
     f1 = decklist.Forest(g0)
     f2 = decklist.Forest(g0)
-    assert len(actions.Play.triggers) == 0
+    assert len(g0.triggers) == 0
+    assert len(g0.active_triggers) == 0
+    assert len(StaticAbility.triggers) == 0
     arc = decklist.Arcades(g0)
-    assert len(actions.Play.triggers) == 1
     omens = decklist.WallOfOmens(g0)
-    assert len(actions.Play.triggers) == 2
+    assert len(g0.triggers) == 0
+    assert len(g0.active_triggers) == 0
+    assert len(StaticAbility.triggers) == 2
 
     f1.zone = zones.Deck(0,0)
     f2.zone = zones.Deck(0,1)
     arc.zone = zones.Field(0)
     omens.zone = zones.Hand(0)
+    assert len(g0.triggers) == 0
+    assert len(g0.active_triggers) == 1
 
     g1 = g0.take_action(actions.Play(omens))
+    assert len(g0.triggers) == 0
     assert len(g1.triggers) == 2
+    assert len(g1.active_triggers) == 2
     g1.stack_triggers()
     assert len(g1.triggers) == 0
     stack = g1.in_zone(zones.Stack()) 
@@ -260,3 +273,57 @@ def test_end_turn():
     choices = end_turn.choices(gs)[0]
     gs = gs.take_action(end_turn, choices)
     assert zones.Hand().contains(gs.get(forest))
+
+def test_static_anthem():
+    gs = game.GameState([0])
+    [saruli, steel, kaysa] = decklist.build_deck([decklist.Saruli, decklist.SteelWall, decklist.Kaysa], gs, 0)
+    saruli.zone = zones.Field(0)
+    steel.zone = zones.Field(0)
+    kaysa.zone = zones.Hand(0)
+    assert(saruli.power == 0 and saruli.toughness == 3)
+    assert(steel.power == 0 and steel.toughness == 4)
+    assert (kaysa.power == 2 and kaysa.toughness == 3)
+
+    kaysa.zone = zones.Field(0)
+    assert (saruli.power == 1 and saruli.toughness == 4)
+    assert (steel.power == 0 and steel.toughness == 4)
+    assert (kaysa.power == 3 and kaysa.toughness == 4)
+
+    # anthem effect should not affect cards that aren't in play
+    saruli.zone = zones.Hand(0)
+    steel.zone = zones.Hand(0)
+    assert (saruli.power == 0 and saruli.toughness == 3)
+    assert (steel.power == 0 and steel.toughness == 4)
+
+
+if __name__ == "__main__":
+    setup_function(None)
+    test_forest()
+    setup_function(None)
+    test_cast()
+    setup_function(None)
+    test_etb()
+    setup_function(None)
+    test_battlement()
+    setup_function(None)
+    test_saruli()
+    setup_function(None)
+    test_gold_mana()
+    setup_function(None)
+    test_arcades()
+    setup_function(None)
+    test_coco()
+    setup_function(None)
+    test_coco_etb()
+    setup_function(None)
+    test_duskwatch()
+    setup_function(None)
+    test_duskwatch_miss()
+    setup_function(None)
+    test_trophy_mage()
+    setup_function(None)
+    test_summoning_sickness()
+    setup_function(None)
+    test_end_turn()
+    setup_function(None)
+    test_static_anthem()

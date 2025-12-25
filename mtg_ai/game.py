@@ -1,13 +1,17 @@
-from abc import ABCMeta, abstractmethod
-from dataclasses import dataclass
+from collections.abc import Callable
 from enum import Enum
 from itertools import chain, product
-from typing import Protocol, TypeVar, Optional, List, Dict, Any
+from typing import TypeVar, Optional, List, Dict, Any, TYPE_CHECKING, Set
 from . import zones
 from .mana import Mana
 
+if TYPE_CHECKING:
+    from actions import Trigger
+    from cards import Card
+
 Player = int
-StackObject = TypeVar('StackObject')
+GenericStackObject = TypeVar('GenericStackObject')
+GenericGameObject = TypeVar('GenericGameObject', bound='GameObject')
 
 class Event:
     def __init__(self, action, game_state: 'GameState', source=None, cause=None, ):
@@ -29,6 +33,7 @@ class GameState:
         self.summoning_sick = set() # summoning sick cards
         self.land_drops = 1
         self.active_player = 0
+        self.temporary_effects: List[StaticEffect] = []
 
     def __hash__(self):
         return hash(
@@ -46,15 +51,15 @@ class GameState:
         new_game_state.summoning_sick = {new_game_state.get(card) for card in self.summoning_sick}
         self.children.append(new_game_state)
         new_game_state.parent = self
-        new_game_state.triggers = self.triggers
+        new_game_state.triggers = self.triggers.copy()
         return new_game_state
 
     def in_zone(self, zone: zones.Zone)->List['GameObject']:
         return sorted([c for c in self.objects.values() if zone.contains(c)],
         key=lambda card: card.zone.position or float('-inf'))
 
-    def get(self, object: 'GameObject') -> 'GameObject':
-        return self.objects[object.uid]
+    def get(self, obj: GenericGameObject) -> GenericGameObject:
+        return self.objects[obj.uid]
 
     def stack(self, card):
         owner = card.zone.owner if card.zone else None
@@ -82,7 +87,7 @@ class GameState:
         event = action.perform(new_state, **choices)
         new_state = event.game_state
         new_state.triggers.extend(
-            (event,trigger) for trigger in action.triggers if trigger.condition(event)
+            (event,trigger) for trigger in new_state.active_triggers if trigger.condition(event)
         )
         return new_state
 
@@ -90,6 +95,15 @@ class GameState:
         for (event, trigger) in self.triggers:
             trigger.do(self, event)
         self.triggers.clear()
+
+    @property
+    def active_triggers(self):
+        return [st.trigger for st in StaticAbility.triggers if st.is_active(self)]
+
+    @property
+    def active_effects(self):
+        return ([st.effect for st in StaticAbility.effects if st.is_active(self)]
+                + self.temporary_effects)
 
 class GameObject:
     maxid = 0
@@ -212,7 +226,7 @@ class StackAbility(GameObject):
         super().__init__(game_state)
         self.effect: Action = effect + StackAbility.Cleanup(self)
 
-    def copy(self):
+    def copy(self) -> 'StackAbility':
         ability = StackAbility(
             game_state=self.game_state,
             effect=self.effect
@@ -221,6 +235,55 @@ class StackAbility(GameObject):
         ability.effect = self.effect
         return ability
 
+class StaticAbility:
+    """
+    Any ability which is automatically active when the card is in the
+    appropriate zone.
+    Includes triggered abilities: "When this creature enters, draw a card"
+    is only checked when the creature is in play.
+    """
+    triggers: List['StaticAbility'] = []
+    effects: List['StaticAbility'] = []
+
+    def __init__(self,
+                 active_zone: zones.Zone,
+                 source: 'Card',
+                 trigger: 'Optional[Trigger]' = None,
+                 effect: 'Optional[StaticEffect]' = None):
+        self.active_zone = active_zone
+        self.source = source
+        self.trigger = trigger
+        self.effect = effect
+        if self.trigger is not None:
+            self.triggers.append(self)
+        if self.effect is not None:
+            self.effects.append(self)
+
+    def is_active(self, game_state: GameState) -> bool:
+        card = game_state.get(self.source)
+        return self.active_zone.contains(card)
+
+
+class StaticEffect(GameObject):
+    """
+    An ongoing effect that modifies the effective properties of cards (e.g. +1/+1 until EoT).
+    """
+    def __init__(self, game_state: GameState,
+                 condition: 'Callable[[Card], bool]',
+                 property_name: str,
+                 modification: Callable,
+                 affected_zone = zones.Field()):
+        self.zone = None
+        super().__init__(game_state)
+        self.condition = lambda c: affected_zone.contains(c) and condition(c)
+        self.property_name = property_name
+        self.modification = modification
+
+    def copy(self) -> 'StaticEffect':
+        return StaticEffect(game_state=self.game_state,
+                            condition=self.condition,
+                             property_name=self.property_name,
+                            modification=self.modification)
 
 class CardType(str, Enum):
     Land = "land"
