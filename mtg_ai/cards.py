@@ -9,12 +9,27 @@ Action = TypeVar('Action')
 
 
 class Card(game.GameObject):
+    """
+    Representation of a card.
+
+    Attributes: 
+        name: the card's name
+        cost: the amount of mana required to cast this card, if it is a spell.
+        types: this card's card types
+        subtypes: this card's subtypes
+        abilities: this card's abilities
+        effect: The action that should be taken when this card resolves, if it is 
+                a spell
+        zone: The zone this card is in, if any.
+        tapped: whether this card is tapped.
+    """
+
     @dataclass
     class Abilities:
         static: list = field(default_factory=list)
         activated: list = field(default_factory=list)
 
-    def __init__(self, name,
+    def __init__(self, name:str,
                 game_state: GameState,
                 *,
                  cost: Optional[mana.Mana] = None,
@@ -28,7 +43,7 @@ class Card(game.GameObject):
 
         super().__init__(game_state)
         self.cost = cost
-        self.zone = zone 
+        self.zone = zone
         self.name = name
         self.types = set(types)
         self.subtypes = set(st.lower() for st in subtypes)
@@ -40,6 +55,12 @@ class Card(game.GameObject):
         
     @property
     def effect(self):
+        """
+        The full effect of resolving a spell, in addition to any card-specific effects.
+        Instants and sorceries go to the graveyard on resolution; all other 
+        card types are put into play
+        """
+
         dest_zone = zones.Grave(self.controller) if self.types & SPELL_TYPES else zones.Field(self.controller)
         dest = actions.MoveTo(dest_zone).bind(card=self)
         if self._effect:
@@ -51,11 +72,11 @@ class Card(game.GameObject):
         """
         Add an activated ability to this card.
 
-        Params:
-        cost: the action that must be taken to activate the ability
-        effect: the action that is performed by the ability
-        uses_stack: whether the ability is put on the stack. Mana abilities and 
-        special actions do not use the stack.
+        Args:
+            cost: the action that must be taken to activate the ability
+            effect: the action that is performed by the ability
+            uses_stack: whether the ability is put on the stack. 
+                        Mana abilities and special actions do not use the stack.
         """
         self.abilities.activated.append(actions.ActivatedAbility(
             cost=cost,
@@ -89,7 +110,7 @@ class Card(game.GameObject):
         if self.cost is None:
             return 0
         return self.cost.mana_value
-            
+
     def copy(self, game_state: GameState):
         return Card(name=self.name,
                     types=self.types,
@@ -102,7 +123,7 @@ class Card(game.GameObject):
                     game_state=game_state)
 
     def __str__(self):
-        return f"[{self.name}@{self.zone}]"
+        return f"{self.name}({self.zone})"
 
     def __repr__(self):
         return str(self)

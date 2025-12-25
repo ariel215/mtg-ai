@@ -6,10 +6,24 @@ Player = TypeVar('Player')
 
 @dataclass(slots=True)
 class Zone:
+    """
+    This class represents both the particular location a card is in 
+    in the game, and a zone containing a set of cards
+
+    Every zone except for the stack is owned by a particular player.
+
+    The library and the stack have a fixed order.
+    """
     owner: Optional[Player] = None
     position: Optional[int] = None
 
-    def contains(self, card):
+    def contains(self, card) -> bool:
+        """
+        Whether a zone contains a particular card.
+
+        If `self.owner` is None, it matches any player, and likewise 
+        `self.position` matches any position when it is None.
+        """
         return (
             type(self) is type(card.zone) 
             and (self.owner is None or self.owner == card.zone.owner)
@@ -48,7 +62,7 @@ class Stack(Zone):
     pass
 
 class Any(Zone):
-    def contains(self, _card):
+    def contains(self, card) -> bool:
         return True
 
 
