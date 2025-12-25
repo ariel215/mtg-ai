@@ -9,7 +9,7 @@ class Getter[T](Protocol):
 
 class Get[T]:
     """
-    Adapter to let us assign either getters or values 
+    Adapter to let us assign either Getters or values
     to a property
     """
     def __init__(self, default_value=None):

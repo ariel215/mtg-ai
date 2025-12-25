@@ -1,9 +1,13 @@
-from typing import List
-from mtg_ai.game import GameState, Action, ChoiceSet, Event, StackAbility, CardType
+from typing import List, Callable, TYPE_CHECKING
+from mtg_ai.game import GameState, Action, ChoiceSet, Event, StackAbility, CardType, StaticEffect, \
+    GameObject
 from mtg_ai import zones
 from mtg_ai.mana import Mana
 from itertools import product
 from mtg_ai.getters import Get
+
+if TYPE_CHECKING:
+    from cards import Card
 
 
 def possible_actions(game_state: GameState) -> List[Action]:
@@ -172,8 +176,12 @@ class ActivatedAbility(Action):
         return Event(self, game_state)
 
 class Trigger:
-    def __init__(self, condition, action, source, uses_stack=True):
-        self.condition = condition
+    def __init__(self,  when: type[Action],
+                        condition: Callable[[Event], bool],
+                        action: Action,
+                        source: 'Card',
+                        uses_stack: bool = True):
+        self.condition = lambda ev: isinstance(ev.action, when) and condition(ev)
         self.action = action
         self.source = source
         self.uses_stack = uses_stack

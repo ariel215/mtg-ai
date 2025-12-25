@@ -1,6 +1,8 @@
 from mtg_ai import actions, game, getters, zones, mana
 from mtg_ai.cards import Card, CardType
-  
+from mtg_ai.game import StaticEffect
+
+
 def tap_mana(card,mana) -> actions.ActivatedAbility:
     return actions.ActivatedAbility(
         cost=actions.TapSymbol(card),
@@ -64,7 +66,11 @@ class VineTrellis(Card):
             types=(CardType.Creature,),
             subtypes=("wall",),
             cost=mana.Mana(green=1,generic=1),
-            game_state=game_state)
+            game_state=game_state,
+            power=0,
+            toughness=4,
+            keywords=["defender"]
+        )
 
         self.activated(
             actions.TapSymbol(self),
@@ -79,7 +85,11 @@ class WallOfRoots(Card):
             types=(CardType.Creature,),
             subtypes=("wall",),
             cost=mana.Mana(green=1,generic=1),
-            game_state=game_state)
+            game_state=game_state,
+            power=0,
+            toughness=5,
+            keywords=["defender"]
+        )
         # Todo: make this do the right thing
         self.activated(
             actions.Tap(lambda card: card.uid == self.uid) + actions.AddCounter(self,"-0/-1", zones.Field()), 
@@ -93,7 +103,10 @@ class WallOfOmens(Card):
             types=(CardType.Creature,),
             subtypes=("wall",),
             cost = mana.Mana(white=1, generic=1),
-            game_state=game_state
+            game_state=game_state,
+            power=0,
+            toughness=4,
+            keywords=["defender"]
         )
 
         self.triggered(
@@ -109,13 +122,16 @@ class Battlement(Card):
         types=(CardType.Creature,),
         subtypes=("wall",),
         cost = mana.Mana(green=1, generic=1),
-        game_state=game_state
+        game_state=game_state,
+        power=0,
+        toughness=4,
+        keywords=["defender"]
         )
         def mana_added(game_state)->mana.Mana:
             owner = getters.Controller(self)(game_state)
             total = mana.Mana(green=len([card
                 for card in game_state.in_zone(zones.Field(owner=owner))
-                if "wall" in card.subtypes # this is technically wrong -- should be for defenders not walls
+                if "defender" in card.keywords
             ]))
             return total
 
@@ -131,13 +147,16 @@ class Axebane(Card):
             types=(CardType.Creature,),
             subtypes=("wall",),
             cost = mana.Mana(green=1, generic=2),
-            game_state=game_state
+            game_state=game_state,
+            power=0,
+            toughness=3,
+            keywords=["defender"],
         )
         def mana_added(game_state: game.GameState)->mana.Mana:
             owner = getters.Controller(self)(game_state)
             total = mana.Mana(gold=len([card
                 for card in game_state.in_zone(zones.Field(owner=owner))
-                if "wall" in card.subtypes # this is technically wrong -- should be for defenders not walls
+                if "defender" in card.keywords
             ]))
             return total
 
@@ -154,7 +173,9 @@ class Arcades(Card):
             types=(CardType.Creature,),
             subtypes=("dragon", ),
             cost=mana.Mana(white=1,blue=1, green=1,generic=1),
-            game_state=game_state
+            game_state=game_state,
+            power=3,
+            toughness=5,
         )
         def arc_triggers_if(event):
             gs = event.game_state
@@ -179,7 +200,10 @@ class Saruli(Card):
             types=(CardType.Creature,),
             subtypes=("wall",),
             cost=mana.Mana(green=1),
-            game_state=game_state
+            game_state=game_state,
+            power=0,
+            toughness=3,
+            keywords=["defender"],
         )
         self.activated(
             cost=game.And(
@@ -199,7 +223,11 @@ class SylvanCaryatid(Card):
                 types=(CardType.Creature,),
                 subtypes=("wall",),
                 cost=mana.Mana(green=1,generic=1),
-                game_state=game_state)
+                game_state=game_state,
+                power=0,
+                toughness=3,
+                keywords=["defender", "hexproof"],
+            )
         self.activated(
             actions.TapSymbol(self),
             actions.AddMana(mana.Mana(gold=1))
@@ -228,7 +256,9 @@ class Duskwatch(Card):
             "Duskwatch Recruiter",
             cost=mana.Mana(green=1,generic=1),
             types=(CardType.Creature,),
-            game_state=game_state
+            game_state=game_state,
+            power=2,
+            toughness=2,
         )
 
         self.activated(
@@ -247,7 +277,9 @@ class TrophyMage(Card):
             "Trophy Mage",
             cost=mana.Mana(blue=1,generic=2),
             types=(CardType.Creature,),
-            game_state=game_state
+            game_state=game_state,
+            power=2,
+            toughness=2,
         )
 
         self.triggered(
@@ -272,6 +304,35 @@ class Staff(Card):
         # technically this card can do a bunch of stuff,
         # but the only thing we're interested in right now is 
         # "does it win the game" and we're going to hack that on separately
+
+class SteelWall(Card):
+    def __init__(self, game_state):
+        super().__init__(
+            "Steel Wall",
+            mana.Mana(generic=1),
+            types=(CardType.Artifact, CardType.Creature),
+            game_state=game_state,
+            power=0,
+            toughness=4,
+            keywords=["defender"],
+        )
+
+class Kaysa(Card):
+    def __init__(self, game_state):
+        super().__init__(
+            "Kaysa",
+            mana.Mana(green=2, generic=3),
+            types=(CardType.Creature,),
+            game_state=game_state,
+            power=2,
+            toughness=3,
+        )
+        self.static(condition=lambda c: c.cost.green > 0 and CardType.Creature in c.types,
+                    property_name="power",
+                    modification=lambda x: x+1)
+        self.static(condition=lambda c: c.cost.green > 0 and CardType.Creature in c.types,
+                    property_name="toughness",
+                    modification=lambda x: x + 1)
 
 
 def build_deck(card_types, game_state, player):
