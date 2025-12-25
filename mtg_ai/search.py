@@ -6,7 +6,7 @@ from typing import List, Any, Self
 from mtg_ai import actions, decklist, getters, zones
 from mtg_ai.game import GameState, Action
 
-@dataclass
+@dataclass(slots=True)
 class HistoryNode:
     parent: Self | None
     game_state: GameState

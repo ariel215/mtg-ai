@@ -21,7 +21,7 @@ class GameState:
     __slots__ = ('objects','players', 'mana_pool','turn_number','triggers','summoning_sick', 'land_drops', 'active_player')
 
     def __init__(self,players: List[Player], mana_pool: Optional['Mana']=None, turn_number:int=0):
-        self.objects = {}
+        self.objects = []
         self.players = players
         self.mana_pool = mana_pool or Mana()
         self.turn_number = turn_number
@@ -32,7 +32,7 @@ class GameState:
 
     def __hash__(self):
         return hash(
-            tuple(chain((self.mana_pool, self.active_player),self.objects.values()))
+            tuple(chain((self.mana_pool, self.active_player),self.objects))
         )
     
     def __eq__(self, value):
@@ -40,15 +40,13 @@ class GameState:
             
     def copy(self) -> 'GameState':
         new_game_state = GameState(self.players,self.mana_pool.copy(), self.turn_number)
-        uids = [uid for uid in self.objects]
-        for uid in uids:
-            self.objects[uid].move_to(new_game_state)
+        new_game_state.objects = [obj.copy(new_game_state) for obj in self.objects]
         new_game_state.summoning_sick = {new_game_state.get(card) for card in self.summoning_sick}
         new_game_state.triggers = self.triggers
         return new_game_state
 
     def in_zone(self, zone: zones.Zone)->List['GameObject']:
-        return sorted([c for c in self.objects.values() if zone.contains(c)],
+        return sorted([c for c in self.objects if zone.contains(c)],
         key=lambda card: card.zone.position or float('-inf'))
 
     def get(self, object: 'GameObject') -> 'GameObject':
@@ -90,26 +88,16 @@ class GameState:
         self.triggers.clear()
 
 class GameObject:
-    maxid = 0
     def __init__(self, game_state: GameState, uid: Optional[int]=None):
         self.game_state = game_state
         if uid is None:
-            self.uid = GameObject.maxid
-            GameObject.maxid += 1
+            self.uid = len(game_state.objects)
+            game_state.objects.append(self)
         else:
             self.uid = uid
-        game_state.objects[self.uid] = self
-
-    def move_to(self, new_game_state: GameState):
-        cpy = self.copy()
-        tmp_uid = cpy.uid
-        cpy.game_state = new_game_state
-        cpy.uid = self.uid
-        new_game_state.objects[self.uid] = cpy
-        del self.game_state.objects[tmp_uid]
-        return cpy
+            game_state.objects[uid] = self
     
-    def copy(self) -> 'GameObject':
+    def copy(self, game_state: GameState) -> 'GameObject':
         raise NotImplementedError()
 
 
@@ -212,9 +200,9 @@ class StackAbility(GameObject):
         super().__init__(game_state)
         self.effect: Action = effect + StackAbility.Cleanup(self)
 
-    def copy(self):
+    def copy(self,game_state: GameState):
         ability = StackAbility(
-            game_state=self.game_state,
+            game_state=game_state,
             effect=self.effect
         )
         ability.zone=self.zone

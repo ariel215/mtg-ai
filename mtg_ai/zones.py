@@ -4,7 +4,7 @@ from typing import Optional, TypeVar
 
 Player = TypeVar('Player')
 
-@dataclass
+@dataclass(slots=True)
 class Zone:
     owner: Optional[Player] = None
     position: Optional[int] = None

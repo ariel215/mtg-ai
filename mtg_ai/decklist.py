@@ -316,9 +316,9 @@ class Staff(Card):
     def __init__(self, game_state):
         super().__init__(
             "Staff of Domination",
-            mana.Mana(generic=3),
+            game_state,
+            cost=mana.Mana(generic=3),
             types=(CardType.Artifact,),
-            game_state=game_state
         )
         # technically this card can do a bunch of stuff,
         # but the only thing we're interested in right now is 

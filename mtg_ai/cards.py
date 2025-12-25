@@ -1,6 +1,6 @@
 from collections import defaultdict
 from mtg_ai import game, actions, mana, zones
-from mtg_ai.game import CardType, SPELL_TYPES
+from mtg_ai.game import CardType, SPELL_TYPES, GameState
 from typing import Iterable, Optional, TypeVar
 from dataclasses import dataclass, field
 from enum import Enum
@@ -9,16 +9,14 @@ Action = TypeVar('Action')
 
 
 class Card(game.GameObject):
-    cards = {}
     @dataclass
     class Abilities:
         static: list = field(default_factory=list)
         activated: list = field(default_factory=list)
 
-    def __init_subclass__(cls):
-        Card.cards[cls.__name__] = cls
-
     def __init__(self, name,
+                game_state: GameState,
+                *,
                  cost: Optional[mana.Mana] = None,
                  types: Iterable[CardType]=(),
                  subtypes: Iterable[str] = (),
@@ -26,7 +24,6 @@ class Card(game.GameObject):
                  effect: Optional[Action] = None,
                  zone:Optional[zones.Zone]=None,
                  tapped: bool = False,
-                 game_state: Optional[game.GameState] = None,
              ):
 
         super().__init__(game_state)
@@ -93,7 +90,7 @@ class Card(game.GameObject):
             return 0
         return self.cost.mana_value
             
-    def copy(self):
+    def copy(self, game_state: GameState):
         return Card(name=self.name,
                     types=self.types,
                     subtypes=self.subtypes,
@@ -102,7 +99,7 @@ class Card(game.GameObject):
                     effect=self._effect,
                     zone=self.zone,
                     tapped=self.tapped,
-                    game_state=self.game_state)
+                    game_state=game_state)
 
     def __str__(self):
         return f"[{self.name}@{self.zone}]"

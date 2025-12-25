@@ -2,7 +2,7 @@ from dataclasses import dataclass, asdict
 
 COLORS = ('white', 'blue', 'black', 'red', 'green', 'colorless')
 
-@dataclass(unsafe_hash=True)
+@dataclass(unsafe_hash=True,slots=True)
 class Mana:
     white: int = 0
     blue: int = 0

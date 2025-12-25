@@ -88,7 +88,7 @@ class MoveTo(Action):
         if zone.position == zones.TOP:
             top = max(
                 card.zone.position
-                for card in game_state.objects.values()
+                for card in game_state.objects
                 if hasattr(card,'zone')
             )
             zone.position = top + 1
@@ -148,7 +148,7 @@ class Tap(Action):
         self.condition = condition
 
     def choices(self, game_state):
-        return [{'card': c} for c in game_state.objects.values() if self.condition(c)
+        return [{'card': c} for c in game_state.objects if self.condition(c)
             and not getattr(c,'tapped', True)
         ]
 
