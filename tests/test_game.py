@@ -262,7 +262,7 @@ def test_summoning_sickness():
 
 def test_end_turn():
     gs = game.GameState([0])
-    [forest] = decklist.build_deck([decklist.Forest],gs, 0)
+    [forest] = decklist.build_deck(gs, 0,[decklist.Forest])
     end_turn = actions.EndTurn() + actions.Draw(getters.ActivePlayer())
     choices = end_turn.get_choices(gs)[0]
     gs = gs.take_action(end_turn, choices)
@@ -270,7 +270,7 @@ def test_end_turn():
 
 def test_static_anthem():
     gs = game.GameState([0])
-    [saruli, steel, kaysa] = decklist.build_deck([decklist.Saruli, decklist.SteelWall, decklist.Kaysa], gs, 0)
+    [saruli, steel, kaysa] = decklist.build_deck(gs, 0,[decklist.Saruli, decklist.SteelWall, decklist.Kaysa])
     saruli.zone = zones.Field(0)
     steel.zone = zones.Field(0)
     kaysa.zone = zones.Hand(0)
@@ -292,8 +292,9 @@ def test_static_anthem():
 
 def test_fetch():
     gs = game.GameState([0])
-    decklist.build_deck([decklist.Island, decklist.Forest] + [decklist.Island for _ in range(4)],
-    gs, 0)
+    decklist.build_deck(gs, 0,
+    [decklist.Island, decklist.Forest] + [decklist.Island for _ in range(4)]
+    )
     fetch = decklist.WindsweptHeath(gs)
     fetch.zone = zones.Field(0)
     ability = fetch.attrs.activated[0]

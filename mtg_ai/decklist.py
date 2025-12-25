@@ -422,7 +422,7 @@ class Kaysa(Card):
                     modification=lambda gs, x: x + 1)
 
 
-def build_deck(card_types, game_state, player, shuffle: bool=False):
+def build_deck(game_state, player, card_types, shuffle: bool=False):
     cards = [ty(game_state, owner=player) for ty in card_types]
     if shuffle:
         random.shuffle(cards)

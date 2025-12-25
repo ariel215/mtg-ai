@@ -36,16 +36,21 @@ def test_play():
     result = search.bfs(gs, condition, 100)
     assert result is not None
 
+def starting_hand(state, player, types):
+    cards = [ty(state) for ty in types]
+    for card in cards:
+        card.zone = zones.Hand(player)
+    return cards
+
 
 def test_search():
     gs = game.GameState([0])
-    opening_hand = map(lambda ty: ty(gs), [decklist.Forest, decklist.Saruli, decklist.Saruli, decklist.WallOfRoots])
-    for card in opening_hand:
-        card.zone = zones.Hand(0)
+    opening_hand = starting_hand(gs, 0,
+    [decklist.Forest, decklist.Saruli, decklist.Saruli, decklist.WallOfRoots])
     decklist.build_deck(
-        [decklist.Forest, decklist.Battlement, decklist.Forest, decklist.Forest],
         gs,
-        0
+        0,
+        [decklist.Forest, decklist.Battlement, decklist.Forest, decklist.Forest],
     )
 
     def condition(game_state):
@@ -53,17 +58,51 @@ def test_search():
     result = search.bfs(gs, condition,timeout=5000)
     assert result.final_state is not None
 
-
-
 def test_wincon():
     gs = game.GameState([0])
-    deck = decklist.build_deck([
-        decklist.Forest for _ in range(3)
-    ] + [decklist.WallOfRoots for _ in range(3)]
-    + [decklist.Axebane, decklist.Battlement, decklist.Staff],
-    gs, 0, shuffle=True)
-    for card in deck[-1:-5]:
-        card.zone = zones.Hand(0)
-
+    hand = starting_hand(gs, 0,[
+        decklist.Forest, decklist.Forest, decklist.WallOfRoots,decklist.WallOfRoots, decklist.Battlement
+    ])
+    deck = decklist.build_deck(
+        gs, 0,
+        [decklist.Axebane, decklist.WallOfOmens, decklist.Staff, decklist.Forest],
+    )
     result = search.bfs(gs,search.staff_victory,5000)
     assert result.final_state is not None
+    assert result.final_state.game_state.turn_number == 4
+
+
+
+def test_mcts_short():
+    """
+    shortest imaginable test of mcts, just to assert that
+    everything on the expected path works as intended
+    """
+    gs = game.GameState([0])
+    hand = starting_hand(gs, 0,[
+        decklist.Forest, decklist.Forest, decklist.WallOfRoots,decklist.WallOfRoots, decklist.Battlement
+    ])
+    deck = decklist.build_deck(
+        gs, 0,
+        [decklist.Axebane, decklist.WallOfOmens, decklist.Staff, decklist.Forest],
+    )
+    searcher = search.MCTSSearcher(gs,{},search.staff_victory,1.2,n_iters=1)
+    searcher.choose()
+
+
+def test_mcts():
+    """
+    shortest imaginable test of mcts, just to assert that
+    everything on the expected path works as intended
+    """
+    gs = game.GameState([0])
+    hand = starting_hand(gs, 0,[
+        decklist.Forest, decklist.Forest, decklist.WallOfRoots,decklist.WallOfRoots, decklist.Battlement
+    ])
+    deck = decklist.build_deck(
+        gs, 0,
+        [decklist.Axebane, decklist.WallOfOmens, decklist.Staff, decklist.Forest],
+    )
+    searcher = search.MCTSSearcher(gs,{},search.staff_victory,1.2,n_iters=1000)
+    assert any(entry.value > 0 for entry in searcher.stats.values())
+

@@ -25,7 +25,7 @@ DECK = [ cardtype for cardtype, i in CARDS for _ in range(i) ]
 def play_game(limit) -> mtg_ai.search.SearchResult:
     player = 0
     gs = GameState([player])
-    deck = build_deck(DECK, gs, player, shuffle=True)
+    deck = build_deck(gs, player,DECK,  shuffle=True)
     return mtg_ai.search.bfs(gs, mtg_ai.search.staff_victory, timeout=limit)
 
 if __name__ == "__main__":

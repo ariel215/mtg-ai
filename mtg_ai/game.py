@@ -202,6 +202,9 @@ class Action:
         keys are the same as the keyword arguments to `do()`.
         """
         raise NotImplementedError()
+
+    def __str__(self):
+        return type(self).__name__
  
     def get_choices[T](self, game_state)->ChoiceSet[T]:
         """
@@ -292,6 +295,11 @@ class And(Action):
         new_action = And(*self.actions)
         new_action.actions.append(other)
         return new_action
+
+    def __str__(self):
+        return f"({",".join(str(act) for act in self.actions)})"
+
+
 
 class StackAbility(GameObject):
     """
