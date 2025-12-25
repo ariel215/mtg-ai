@@ -1,3 +1,4 @@
+import random
 from mtg_ai import actions, game, getters, zones, mana
 from mtg_ai.cards import Card, CardType
 
@@ -324,8 +325,10 @@ class Staff(Card):
         # "does it win the game" and we're going to hack that on separately
 
 
-def build_deck(card_types, game_state, player):
+def build_deck(card_types, game_state, player, shuffle: bool=False):
     cards = [ty(game_state) for ty in card_types]
-    for card in cards: 
-        card.zone = zones.Deck(player)
+    if shuffle:
+        random.shuffle(cards)
+    for i,card in enumerate(cards): 
+        card.zone = zones.Deck(player, position=i)
     return cards

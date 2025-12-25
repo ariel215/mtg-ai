@@ -1,3 +1,4 @@
+from ast import Set
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
@@ -17,16 +18,15 @@ class Event:
         self.game_state = game_state
 
 class GameState:
+    __slots__ = ('objects','players', 'mana_pool','turn_number','triggers','summoning_sick', 'land_drops', 'active_player')
 
-    def __init__(self,players: List[Player], mana_pool: Optional['Mana']=None, turn_number=0):
+    def __init__(self,players: List[Player], mana_pool: Optional['Mana']=None, turn_number:int=0):
         self.objects = {}
         self.players = players
         self.mana_pool = mana_pool or Mana()
         self.turn_number = turn_number
-        self.parent = None
-        self.children = []
         self.triggers = [] # triggers waiting to go onto the stack
-        self.summoning_sick = set() # summoning sick cards
+        self.summoning_sick: Set[int] = set() # summoning sick cards
         self.land_drops = 1
         self.active_player = 0
 
@@ -44,8 +44,6 @@ class GameState:
         for uid in uids:
             self.objects[uid].move_to(new_game_state)
         new_game_state.summoning_sick = {new_game_state.get(card) for card in self.summoning_sick}
-        self.children.append(new_game_state)
-        new_game_state.parent = self
         new_game_state.triggers = self.triggers
         return new_game_state
 

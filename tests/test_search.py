@@ -23,8 +23,8 @@ def test_add():
     def condition(gs):
         return gs.mana_pool.green == 1
     
-    state, _ = search.bfs(gs,condition,100)
-    assert state is not None
+    result = search.bfs(gs,condition,100)
+    assert result is not None
 
 def test_play():
     gs = game.GameState([0])
@@ -33,8 +33,8 @@ def test_play():
         card.zone = zones.Hand(0)
     def condition(gs):
         return len(gs.in_zone(zones.Field())) == 2
-    state, remaining = search.bfs(gs, condition, 100)
-    assert state is not None
+    result = search.bfs(gs, condition, 100)
+    assert result is not None
 
 
 def test_search():
