@@ -1,4 +1,3 @@
-from collections.abc import Callable
 from enum import Enum
 from itertools import chain, product
 from typing import TypeVar, Optional, List, Dict, Any, TYPE_CHECKING, Set
@@ -13,31 +12,34 @@ Player = int
 GenericStackObject = TypeVar('GenericStackObject')
 GenericGameObject = TypeVar('GenericGameObject', bound='GameObject')
 
-class Event:
-    def __init__(self, action, game_state: 'GameState', source=None, cause=None, ):
-        self.action = action 
-        self.source = source
-        self.cause = cause
-        self.game_state = game_state
-
 class GameState:
+    """
+    A single state in a game of MtG.
 
-    def __init__(self,players: List[Player], mana_pool: Optional['Mana']=None, turn_number=0):
-        self.objects = {}
+    A GameState consists of the state of each game object in it (cards, abilities, tokens (at some point))
+    plus some additional state.
+
+    Conceptually, GameStates are immutable. Any change to a GameState should be made
+    by calling :GameState.take_action(): with an Action that describes the change to be made;
+    this produces a new GameState with those changes.
+    """
+
+    __slots__ = ('objects','players', 'mana_pool','turn_number','triggers','summoning_sick', 'land_drops', 'active_player')
+
+    def __init__(self,players: List[Player], mana_pool: Optional['Mana']=None, turn_number:int=0):
+        self.objects = []
         self.players = players
         self.mana_pool = mana_pool or Mana()
         self.turn_number = turn_number
-        self.parent = None
-        self.children = []
-        self.triggers = [] # triggers waiting to go onto the stack
-        self.summoning_sick = set() # summoning sick cards
-        self.land_drops = 1
+        self.triggers = [] #: triggers waiting to go onto the stack
+        self.summoning_sick: Set[int] = set() #: summoning sick cards
+        self.land_drops = 1 #: the number of lands that can still be played this turn
         self.active_player = 0
         self.active_effects: 'List[ActiveEffect]' = []
 
     def __hash__(self):
         return hash(
-            tuple(chain((self.mana_pool, self.active_player),self.objects.values()))
+            tuple(chain((self.mana_pool, self.active_player),self.objects))
         )
     
     def __eq__(self, value):
@@ -45,24 +47,23 @@ class GameState:
             
     def copy(self) -> 'GameState':
         new_game_state = GameState(self.players,self.mana_pool.copy(), self.turn_number)
-        uids = [uid for uid in self.objects]
-        for uid in uids:
-            self.objects[uid].move_to(new_game_state)
+        new_game_state.objects = [obj.copy(new_game_state) for obj in self.objects]
         new_game_state.summoning_sick = {new_game_state.get(card) for card in self.summoning_sick}
-        self.children.append(new_game_state)
-        new_game_state.parent = self
         new_game_state.triggers = self.triggers.copy()
         new_game_state.active_effects = self.active_effects.copy()
         return new_game_state
 
     def in_zone(self, zone: zones.Zone)->List['GameObject']:
-        return sorted([c for c in self.objects.values() if zone.contains(c)],
-                      key=lambda card: card.zone.position or float('-inf'))
+        return sorted([c for c in self.objects if zone.contains(c)],
+        key=lambda card: card.zone.position or float('-inf'))
 
     def get(self, obj: GenericGameObject) -> GenericGameObject:
         return self.objects[obj.uid]
 
     def stack(self, card):
+        """
+        Place a card on top of the stack
+        """
         owner = card.zone.owner if card.zone else None
         stack = self.in_zone(zones.Stack())
         if stack:
@@ -83,6 +84,17 @@ class GameState:
         return new_state
 
     def take_action(self, action: 'Action', choices: Dict[str, Any] | None = None, copy:bool=True)->'GameState':
+        """
+        Apply the changes described by :action: and :choices: to this game state.
+
+        If :copy: is True (the default), a copy is created and the changes applied to that
+        state, preserving the initial state. Otherwise, the changes are made in place.
+        This is meant to be a mechanism for saving space.
+
+        Returns:
+            A game state with the changes made
+        """
+
         choices = choices or {}
         new_state = self.copy() if copy else self
         event = action.perform(new_state, **choices)
@@ -107,28 +119,23 @@ class GameState:
 
 
 class GameObject:
-    maxid = 0
+    """
+    Base class for every object that can change between game states, and
+    which needs to maintain a persistent identity as it does so.
+
+    Classes that inherit from GameObject need to implement :copy():
+    """
     def __init__(self, game_state: GameState, uid: Optional[int]=None):
         self.game_state = game_state
         if uid is None:
-            self.uid = GameObject.maxid
-            GameObject.maxid += 1
+            self.uid = len(game_state.objects)
+            game_state.objects.append(self)
         else:
             self.uid = uid
-        game_state.objects[self.uid] = self
-        self._zone: Optional[zones.Zone] = None
-
-    def move_to(self, new_game_state: GameState):
-        cpy = self.copy()
-        tmp_uid = cpy.uid
-        cpy.game_state = new_game_state
-        cpy.uid = self.uid
-        new_game_state.objects[self.uid] = cpy
-        del self.game_state.objects[tmp_uid]
-        return cpy
+            game_state.objects[uid] = self
     
-    def copy(self) -> 'GameObject':
-        raise NotImplemented
+    def copy(self, game_state: GameState) -> 'GameObject':
+        raise NotImplementedError()
 
     @property
     def zone(self) -> zones.Zone | None:
@@ -142,7 +149,33 @@ T = TypeVar('T')
 type Choice[T] = Dict[str, T]
 type ChoiceSet[T] = List[Choice[T]]
 
+class Event:
+    def __init__(self, action, game_state: GameState, source=None, cause=None, ):
+        self.action = action
+        self.source = source
+        self.cause = cause
+        self.game_state = game_state
+
+
 class Action:
+    """
+    Base class for describing a change or set of changes to the game state.
+
+    Classes that inherit from Action must implement :Action.do():. This
+    method should take as keyword arguments anything the action depends on.
+    For example, an action that is performed on a specific card should have `card`
+    as one of the keyword parameters in its implementation of :Action.do():
+
+    Classes that inherit from Action must also implement :Action.choices():.
+    This method should take a game state and return a list. Each element of that
+    list should be a dict whose keys are the keyword arguments for that class's
+    :do(): method.
+
+    If an action is composed of other actions, it should either call :Action.perform():
+    or :GameState.take_action(): to perform those actions, rather than invoke :Action.do():
+    directly.
+    """
+
     def __init__(self):
          self.params = {}
  
@@ -159,7 +192,7 @@ class Action:
         Each element of the ChoiceList should be a dictionary whose 
         keys are the same as the keyword arguments to `do()`.
         """
-        raise NotImplemented
+        raise NotImplementedError()
  
     def choose(self, game_state):
          # cls.choices() should not let you choose anything set in self.params
@@ -181,7 +214,7 @@ class Action:
         Each action should have all the information 
         needed to make its constituent changes.
         """
-        raise NotImplemented
+        raise NotImplementedError()
     
     def __add__(self, other: 'Action') -> 'And':
         return And(self, other)
@@ -198,7 +231,9 @@ class And(Action):
         return [{'choices': option }
         for option in combinations]
     
-    def do(self, game_state, choices):
+    def do(self, game_state, choices=None):
+        if choices is None:
+            choices = ({} for _ in self.actions)
         for action, choice in zip(self.actions, choices):
             game_state = game_state.take_action(action, choice)
         return Event(self, game_state)
@@ -229,9 +264,9 @@ class StackAbility(GameObject):
         super().__init__(game_state)
         self.effect: Action = effect + StackAbility.Cleanup(self)
 
-    def copy(self) -> 'StackAbility':
+    def copy(self,game_state: GameState) -> 'StackAbility':
         ability = StackAbility(
-            game_state=self.game_state,
+            game_state=game_state,
             effect=self.effect
         )
         ability.zone=self.zone

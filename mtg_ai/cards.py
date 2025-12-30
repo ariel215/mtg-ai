@@ -3,12 +3,30 @@ from mtg_ai import game, actions, mana, zones
 from mtg_ai.game import (CardType, SPELL_TYPES, StaticAbility, StaticEffect, TriggeredEffect,
                          Event)
 from typing import Iterable, Optional, TypeVar, Set, List, Callable
+from mtg_ai.game import CardType, SPELL_TYPES, GameState
+from typing import Iterable, Optional, TypeVar
 from dataclasses import dataclass, field
+from enum import Enum
 
 Action = TypeVar('Action')
 
 
 class Card(game.GameObject):
+    """
+    Representation of a card.
+
+    Attributes:
+        name: the card's name
+        cost: the amount of mana required to cast this card, if it is a spell.
+        types: this card's card types
+        subtypes: this card's subtypes
+        abilities: this card's abilities
+        effect: The action that should be taken when this card resolves, if it is
+                a spell
+        zone: The zone this card is in, if any.
+        tapped: whether this card is tapped.
+    """
+
     cards = {}
 
     class GetProperty[T]:
@@ -48,10 +66,9 @@ class Card(game.GameObject):
         static: List[game.StaticAbility] = field(default_factory=list) # includes triggered
         activated: List[actions.ActivatedAbility] = field(default_factory=list)
 
-    def __init_subclass__(cls):
-        Card.cards[cls.__name__] = cls
-
-    def __init__(self, name,
+    def __init__(self, name:str,
+                game_state: GameState,
+                *,
                  cost: Optional[mana.Mana] = None,
                  types: Iterable[CardType]=(),
                  subtypes: Iterable[str] = (),
@@ -62,7 +79,6 @@ class Card(game.GameObject):
                  power: Optional[int] = None,
                  toughness: Optional[int] = None,
                  keywords: Iterable[str] = (),
-                 game_state: Optional[game.GameState] = None,
              ):
 
         super().__init__(game_state)
@@ -82,9 +98,15 @@ class Card(game.GameObject):
         if game_state is not None:
             for static in self.abilities.static:
                 static.on_move(self.game_state)
-        
+
     @property
     def effect(self):
+        """
+        The full effect of resolving a spell, in addition to any card-specific effects.
+        Instants and sorceries go to the graveyard on resolution; all other
+        card types are put into play
+        """
+
         dest_zone = zones.Grave(self.controller) if self.types & SPELL_TYPES else zones.Field(self.controller)
         dest = actions.MoveTo(dest_zone).bind(card=self)
         if self._effect:
@@ -108,11 +130,11 @@ class Card(game.GameObject):
         """
         Add an activated ability to this card.
 
-        Params:
-        cost: the action that must be taken to activate the ability
-        effect: the action that is performed by the ability
-        uses_stack: whether the ability is put on the stack. Mana abilities and 
-        special actions do not use the stack.
+        Args:
+            cost: the action that must be taken to activate the ability
+            effect: the action that is performed by the ability
+            uses_stack: whether the ability is put on the stack.
+                        Mana abilities and special actions do not use the stack.
         """
         self.abilities.activated.append(actions.ActivatedAbility(
             cost=cost,
@@ -169,8 +191,8 @@ class Card(game.GameObject):
         if self.cost is None:
             return 0
         return self.cost.mana_value
-            
-    def copy(self):
+
+    def copy(self, game_state: GameState):
         return Card(name=self.name,
                     types=self._types,
                     subtypes=self._subtypes,
@@ -179,14 +201,14 @@ class Card(game.GameObject):
                     effect=self._effect,
                     zone=self.zone,
                     tapped=self.tapped,
-                    game_state=self.game_state,
+                    game_state=game_state,
                     power=self._power,
                     toughness=self._toughness,
                     keywords=self._keywords,
                     )
 
     def __str__(self):
-        return f"[{self.name}@{self.zone}]"
+        return f"{self.name}({self.zone})"
 
     def __repr__(self):
         return str(self)
@@ -203,30 +225,4 @@ class Card(game.GameObject):
         return type(self) is type(value) and hash(self) == hash(value)
     
 
-# -------------------------------------------------
-
-# Cards in walls: 
-
-# [x] Caretaker
-# [x] Caryatid
-# Roots
-# [x] Battlement
-# [x] Axebane
-# [x] Blossoms
-# [x] Arcades
-# Recruiter
-# TrophyMage
-# Staff
-# Company
-
-# [x] Forest
-# [x] Plains
-# [x] Island
-# TempleGarden
-# BreedingPool
-# HallowedFountain
-# WindsweptHeath
-# Westvale
-# Wildwoods
-# LumberingFalls
 

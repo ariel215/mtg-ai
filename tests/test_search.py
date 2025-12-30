@@ -23,8 +23,8 @@ def test_add():
     def condition(gs):
         return gs.mana_pool.green == 1
     
-    state = search.bfs(gs,condition,100).final_state
-    assert state is not None
+    result = search.bfs(gs,condition,100)
+    assert result is not None
 
 def test_play():
     gs = game.GameState([0])
@@ -33,8 +33,8 @@ def test_play():
         card.zone = zones.Hand(0)
     def condition(gs):
         return len(gs.in_zone(zones.Field())) == 2
-    state = search.bfs(gs, condition, 100).final_state
-    assert state is not None
+    result = search.bfs(gs, condition, 100)
+    assert result is not None
 
 
 def test_search():
@@ -53,3 +53,17 @@ def test_search():
     result = search.bfs(gs, condition,timeout=5000)
     assert result.final_state is not None
 
+
+
+def test_wincon():
+    gs = game.GameState([0])
+    deck = decklist.build_deck([
+        decklist.Forest for _ in range(3)
+    ] + [decklist.WallOfRoots for _ in range(3)]
+    + [decklist.Axebane, decklist.Battlement, decklist.Staff],
+    gs, 0, shuffle=True)
+    for card in deck[-1:-5]:
+        card.zone = zones.Hand(0)
+
+    result = search.bfs(gs,search.staff_victory,5000)
+    assert result.final_state is not None

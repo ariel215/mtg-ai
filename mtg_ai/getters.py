@@ -1,5 +1,6 @@
 from typing import Protocol, TypeVar
 from itertools import chain, combinations, tee
+from . import zones
 
 T = TypeVar('T')
 
@@ -44,7 +45,7 @@ class Controller:
 
 class Zone:
     owner = Get()
-    def __init__(self, zone, owner=None, position=None):
+    def __init__(self, zone: zones.Zone, owner=None, position=None):
         self.zone = zone
         self.owner = owner
         self.postion = position

@@ -2,12 +2,6 @@ from mtg_ai import cards, game, actions, getters, zones, mana, decklist
 from mtg_ai.game import StaticEffect, StaticAbility
 
 
-def setup_function(fun):
-    # setup_function(None)
-    StaticAbility.triggers = []
-    StaticAbility.triggers = []
-
-
 def test_forest():
     g0 = game.GameState([0])
     deck = [decklist.Forest(g0), decklist.Forest(g0), decklist.Forest(g0)]
@@ -293,3 +287,19 @@ def test_static_anthem():
     steel.zone = zones.Hand(0)
     assert (saruli.power == 0 and saruli.toughness == 3)
     assert (steel.power == 0 and steel.toughness == 4)
+
+
+def test_fetch():
+    gs = game.GameState([0])
+    decklist.build_deck([decklist.Island, decklist.Forest] + [decklist.Island for _ in range(4)],
+    gs, 0)
+    fetch = decklist.WindsweptHeath(gs)
+    fetch.zone = zones.Field(0)
+    ability = fetch.abilities.activated[0]
+    choice = ability.choices(gs)[0]
+    gs = gs.take_action(ability, choice)
+    fetch = gs.get(fetch)
+    assert zones.Grave(0).contains(fetch)
+    field = gs.in_zone(zones.Field())
+    assert len(field) == 1
+    assert "forest" in field[0].subtypes

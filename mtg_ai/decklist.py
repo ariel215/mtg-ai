@@ -1,6 +1,36 @@
+import random
 from mtg_ai import actions, game, getters, zones, mana
 from mtg_ai.cards import Card, CardType
 from mtg_ai.game import StaticEffect
+
+
+
+# -------------------------------------------------
+
+# Cards in walls:
+
+# [x] Caretaker
+# [x] Caryatid
+# [?] Roots
+# [x] Battlement
+# [x] Axebane
+# [x] Blossoms
+# [x] Arcades
+# [x] Recruiter
+# [x] TrophyMage
+# [x] Staff
+# [x] Company
+
+# [x] Forest
+# [x] Plains
+# [x] Island
+# [x] TempleGarden
+# [x] BreedingPool
+# HallowedFountain
+# WindsweptHeath
+# Westvale
+# Wildwoods
+# LumberingFalls
 
 
 def tap_mana(card,mana) -> actions.ActivatedAbility:
@@ -12,7 +42,8 @@ def tap_mana(card,mana) -> actions.ActivatedAbility:
 class Forest(Card):
     def __init__(self, game_state):
         super().__init__( "Forest", 
-                         types=(CardType.Land,), 
+                         types=(CardType.Land,),
+                         subtypes=("forest",),
                          game_state=game_state)
         self.activated(
             actions.TapSymbol(self),
@@ -21,7 +52,10 @@ class Forest(Card):
 
 class Plains(Card):
     def __init__(self, game_state):
-        super().__init__( "Plains", types=(CardType.Land,), game_state=game_state)
+        super().__init__( "Plains",
+            types=(CardType.Land,),
+            subtypes=("plains",),
+            game_state=game_state)
         self.activated(
             actions.TapSymbol(self),
             actions.AddMana(mana.Mana(white=1))
@@ -29,7 +63,9 @@ class Plains(Card):
 
 class Island(Card):
     def __init__(self, game_state):
-        super().__init__( "Island", types=(CardType.Land,), game_state=game_state)
+        super().__init__( "Island", types=(CardType.Land,),
+        subtypes=("island",),
+        game_state=game_state)
         self.activated(
             actions.TapSymbol(self),
             actions.AddMana(mana.Mana(blue=1))
@@ -38,7 +74,8 @@ class Island(Card):
 
 class TempleGarden(Card):
     def __init__(self, game_state):
-        super().__init__( "Temple Garden", types=(CardType.Land,), game_state=game_state)
+        super().__init__( "Temple Garden", types=(CardType.Land,),
+        subtypes=("forest","plains"),game_state=game_state)
         self.activated(
             actions.TapSymbol(self),
             actions.AddMana(mana.Mana(white=1))
@@ -49,13 +86,28 @@ class TempleGarden(Card):
 
 class BreedingPool(Card):
     def __init__(self, game_state):
-        super().__init__( "Breeding Pool", types=(CardType.Land,), game_state=game_state)
+        super().__init__( "Breeding Pool", types=(CardType.Land,),
+        subtypes=("forest","island"), game_state=game_state)
         self.activated(
             actions.TapSymbol(self),
             actions.AddMana(mana.Mana(blue=1))
         ).activated(
             actions.TapSymbol(self),
             actions.AddMana(mana.Mana(green=1))
+        )
+
+class WindsweptHeath(Card):
+    def __init__(self, game_state):
+        super().__init__("Windswept Heath", types=(CardType.Land,),
+        game_state=game_state)
+        self.activated(
+            actions.TapSymbol(self) + actions.Sacrifice(self), #todo: pay 1 life
+            actions.Search(
+                getters.FromZone(getters.Zone(zones.Deck(),getters.Controller(self))),
+                lambda cards: [[c] for c in cards if "forest" in c.subtypes],
+                actions.Play(),
+                actions.Shuffle()
+            )
         )
 
 
@@ -298,9 +350,9 @@ class Staff(Card):
     def __init__(self, game_state):
         super().__init__(
             "Staff of Domination",
-            mana.Mana(generic=3),
+            game_state,
+            cost=mana.Mana(generic=3),
             types=(CardType.Artifact,),
-            game_state=game_state
         )
         # technically this card can do a bunch of stuff,
         # but the only thing we're interested in right now is 
@@ -336,8 +388,10 @@ class Kaysa(Card):
                     modification=lambda gs, x: x + 1)
 
 
-def build_deck(card_types, game_state, player):
+def build_deck(card_types, game_state, player, shuffle: bool=False):
     cards = [ty(game_state) for ty in card_types]
-    for card in cards: 
-        card.zone = zones.Deck(player)
+    if shuffle:
+        random.shuffle(cards)
+    for i,card in enumerate(cards):
+        card.zone = zones.Deck(player, position=i)
     return cards
