@@ -10,7 +10,7 @@ def test_forest():
 
     [f1, f2, f3] = deck
     f1.zone = zones.Hand(0)
-    t_add_g = f1.abilities.activated[0]
+    t_add_g = f1.attrs.activated[0]
 
     assert len(g0.objects) == 3 
     
@@ -35,9 +35,9 @@ def test_cast():
     vt.zone = zones.Hand(0)
     f1.zone = zones.Field(0)
     f2.zone = zones.Field(0)
-    choices = f1.abilities.activated[0].choices(g0)[0] 
-    g1 = g0.take_action(f1.abilities.activated[0],choices)
-    g2 = g1.take_action(f2.abilities.activated[0],choices)
+    choices = f1.attrs.activated[0].choices(g0)[0]
+    g1 = g0.take_action(f1.attrs.activated[0],choices)
+    g2 = g1.take_action(f2.attrs.activated[0],choices)
     cast_spell = actions.CastSpell(vt)
     g3 = g2.take_action(actions.CastSpell(vt).bind(mana=g2.mana_pool),{})
 
@@ -78,7 +78,7 @@ def test_battlement():
     b1.zone = zones.Field(0)
     b2 = decklist.Battlement(gs)
     b2.zone = zones.Field(0)
-    ability = b1.abilities.activated[0]
+    ability = b1.attrs.activated[0]
     choice = ability.choices(gs)[0]
     gs = gs.take_action(ability, choice)
     assert gs.mana_pool.green == 2
@@ -89,7 +89,7 @@ def test_saruli():
     saruli = decklist.Saruli(gs)
     omens.zone = zones.Field(0)
     saruli.zone = zones.Field(0)
-    saruli_ability = saruli.abilities.activated[0]
+    saruli_ability = saruli.attrs.activated[0]
     choices = saruli_ability.choices(gs)
     assert len(choices) == 1
     assert len(choices[0]['costs_choice']) == 1
@@ -174,7 +174,7 @@ def test_coco():
     g2 = g1.resolve_stack()
     field = g2.in_zone(zones.Field())
     assert len(field) == 2
-    assert all(card.name == "Axebane Guardian" for card in field)
+    assert all(card.attrs.name == "Axebane Guardian" for card in field)
 
 def test_coco_etb():
     g0 = game.GameState([0])
@@ -208,7 +208,7 @@ def test_duskwatch():
         card.zone = zones.Deck(0,i)
     dw.zone = zones.Field(0)
     g0.mana_pool = mana.Mana(green=3)
-    ability = dw.abilities.activated[0]
+    ability = dw.attrs.activated[0]
     choice = next(iter(ability.choices(g0)))
     g1 = g0.take_action(ability,choice)
     assert zones.Hand(0).contains(g1.get(deck[1]))
@@ -222,7 +222,7 @@ def test_duskwatch_miss():
         card.zone = zones.Deck(0,i)
     dw.zone = zones.Field(0)
     g0.mana_pool = mana.Mana(green=3)
-    ability = dw.abilities.activated[0]
+    ability = dw.attrs.activated[0]
     choice = next(iter(ability.choices(g0)))
     g1 = g0.take_action(ability,choice)
     assert len(g1.in_zone(zones.Deck(0))) == 3
@@ -248,7 +248,7 @@ def test_summoning_sickness():
     f1 = decklist.Forest(gs)
     f1.zone = zones.Hand(0)
 
-    ability = b2.abilities.activated[0]
+    ability = b2.attrs.activated[0]
     gs = gs.take_action(actions.Play(card=b2),{})
     # should not be able to activate b2 the turn it comes into play
     assert not ability.choices(gs)
@@ -257,7 +257,7 @@ def test_summoning_sickness():
     assert ability.choices(gs)
     # noncreatures don't have summoning sickness
     gs = gs.take_action(actions.Play(card=f1),{})
-    assert f1.abilities.activated[0].choices(gs)
+    assert f1.attrs.activated[0].choices(gs)
 
 def test_end_turn():
     gs = game.GameState([0])
@@ -273,20 +273,20 @@ def test_static_anthem():
     saruli.zone = zones.Field(0)
     steel.zone = zones.Field(0)
     kaysa.zone = zones.Hand(0)
-    assert(saruli.power == 0 and saruli.toughness == 3)
-    assert(steel.power == 0 and steel.toughness == 4)
-    assert (kaysa.power == 2 and kaysa.toughness == 3)
+    assert(saruli.attrs.power == 0 and saruli.attrs.toughness == 3)
+    assert(steel.attrs.power == 0 and steel.attrs.toughness == 4)
+    assert (kaysa.attrs.power == 2 and kaysa.attrs.toughness == 3)
 
     kaysa.zone = zones.Field(0)
-    assert (saruli.power == 1 and saruli.toughness == 4)
-    assert (steel.power == 0 and steel.toughness == 4)
-    assert (kaysa.power == 3 and kaysa.toughness == 4)
+    assert (saruli.attrs.power == 1 and saruli.attrs.toughness == 4)
+    assert (steel.attrs.power == 0 and steel.attrs.toughness == 4)
+    assert (kaysa.attrs.power == 3 and kaysa.attrs.toughness == 4)
 
     # anthem effect should not affect cards that aren't in play
     saruli.zone = zones.Hand(0)
     steel.zone = zones.Hand(0)
-    assert (saruli.power == 0 and saruli.toughness == 3)
-    assert (steel.power == 0 and steel.toughness == 4)
+    assert (saruli.attrs.power == 0 and saruli.attrs.toughness == 3)
+    assert (steel.attrs.power == 0 and steel.attrs.toughness == 4)
 
 
 def test_fetch():
@@ -295,11 +295,11 @@ def test_fetch():
     gs, 0)
     fetch = decklist.WindsweptHeath(gs)
     fetch.zone = zones.Field(0)
-    ability = fetch.abilities.activated[0]
+    ability = fetch.attrs.activated[0]
     choice = ability.choices(gs)[0]
     gs = gs.take_action(ability, choice)
     fetch = gs.get(fetch)
     assert zones.Grave(0).contains(fetch)
     field = gs.in_zone(zones.Field())
     assert len(field) == 1
-    assert "forest" in field[0].subtypes
+    assert "forest" in field[0].attrs.subtypes

@@ -1,15 +1,7 @@
 from collections import defaultdict
 from mtg_ai import game, actions, mana, zones
-from mtg_ai.game import (CardType, SPELL_TYPES, StaticAbility, StaticEffect, TriggeredEffect,
-                         Event)
 from typing import Iterable, Optional, TypeVar, Set, List, Callable
-from mtg_ai.game import CardType, SPELL_TYPES, GameState
-from typing import Iterable, Optional, TypeVar
-from dataclasses import dataclass, field
-from enum import Enum
-
-Action = TypeVar('Action')
-
+from mtg_ai.mana import Mana
 
 class Card(game.GameObject):
     """
@@ -29,76 +21,52 @@ class Card(game.GameObject):
 
     cards = {}
 
-    class GetProperty[T]:
-        """
-        Many properties of a Card can be modified by ongoing static effects.
-        This descriptor allows those properties to be affected by other things
-        in the GameState.
-        """
+    class CardAttributes:
+        def __init__(self, card, name, cost, types, subtypes, *,
+                     power: Optional[int] = None,
+                     toughness: Optional[int] = None,
+                     static: List[game.StaticAbility] = None,
+                     activated: List[actions.ActivatedAbility] = None,
+                     keywords: Iterable[str] = None):
+            self._name: str = name
+            self._cost: Mana = cost
+            self._types: Set[game.CardType] = set(types)
+            self._subtypes: Set[str] = set(subtypes)
+            self._power: int | None = power
+            self._toughness: int | None = toughness
+            self._static: List[game.StaticAbility] = static or []
+            self._activated: List[actions.ActivatedAbility] = activated or []
+            self._keywords = keywords or []
+            self._card = card
 
-        def __set_name__(self, owner: 'Card', name: str):
-            self.private_name = f"_{name}"
-            self.public_name = name
+        def __setattr__(self, key, value):
+            if hasattr(self, "_" + key):
+                super().__setattr__("_" + key, value)
+            else:
+                super().__setattr__(key, value)
 
-        def __set__(self, owner: 'Card', value: T):
-            assert(hasattr(owner, self.private_name))
-            setattr(owner, self.private_name, value)
-
-        def __get__(self, owner: 'Card', _objname) -> T:
-            base = getattr(owner, self.private_name, None)
+        def __getattr__(self, attribute_name):
+            base = self.__getattribute__("_" + attribute_name)
             if base is None:
                 return None
-            for effect in owner.game_state.active_statics:
-                if effect.matches(self.public_name, owner):
+            card = self._card
+            for effect in card.game_state.active_statics:
+                if effect.matches(attribute_name, card):
                     # TODO: if condition cares about this properly, we will get an infinite loop
-                    base = effect.modification(owner.game_state, base)
+                    base = effect.modification(card.game_state, base)
             return base
 
-    power = GetProperty()
-    toughness = GetProperty()
-    types = GetProperty()
-    subtypes = GetProperty()
-    abilities = GetProperty()
-    keywords = GetProperty()
-
-    @dataclass
-    class Abilities:
-        static: List[game.StaticAbility] = field(default_factory=list) # includes triggered
-        activated: List[actions.ActivatedAbility] = field(default_factory=list)
-
-    def __init__(self, name:str,
-                game_state: GameState,
-                *,
-                 cost: Optional[mana.Mana] = None,
-                 types: Iterable[CardType]=(),
-                 subtypes: Iterable[str] = (),
-                 abilities: Optional[Abilities] = None,
-                 effect: Optional[Action] = None,
-                 zone:Optional[zones.Zone]=None,
-                 tapped: bool = False,
-                 power: Optional[int] = None,
-                 toughness: Optional[int] = None,
-                 keywords: Iterable[str] = (),
-             ):
-
-        super().__init__(game_state)
-        self.cost = cost
-        self._zone = zone  # private so setter can add/remove TemporaryEffects
-        self.name = name
-        self._types = set(types)
-        self._subtypes: Set[str] = set(st.lower() for st in subtypes)
-        self.tapped = tapped
-        self._abilities = abilities or Card.Abilities()
-        self.counters = defaultdict(lambda: 0)
-        self._effect = effect
-        self._power: Optional[int] = power
-        self._toughness: Optional[int] = toughness
-        self._keywords: Set[str] = set(kw.lower() for kw in keywords)
-
-        if game_state is not None:
-            for static in self.abilities.static:
-                static.on_move(self.game_state)
-
+        def copy(self, new_card):
+            return Card.CardAttributes(card=new_card,
+                                       name = self._name,
+                                       cost = self._cost,
+                                       power=self._power,
+                                       toughness=self._toughness,
+                                       types=self._types,
+                                       subtypes=self._subtypes,
+                                       static = self._static,
+                                       activated=self._activated,
+                                       keywords=self._keywords)
     @property
     def effect(self):
         """
@@ -106,13 +74,54 @@ class Card(game.GameObject):
         Instants and sorceries go to the graveyard on resolution; all other
         card types are put into play
         """
-
-        dest_zone = zones.Grave(self.controller) if self.types & SPELL_TYPES else zones.Field(self.controller)
+        if self.attrs.types & game.SPELL_TYPES:
+            dest_zone = zones.Grave(self.controller)
+        else:
+            dest_zone = zones.Field(self.controller)
         dest = actions.MoveTo(dest_zone).bind(card=self)
         if self._effect:
             return self._effect + dest
         else:
             return dest
+
+
+    def __init__(self,
+                 name:str,
+                 game_state: game.GameState,
+                 *,
+                 cost: Optional[mana.Mana] = None,
+                 types: Iterable[game.CardType]=(),
+                 subtypes: Iterable[str] = (),
+                 tapped: bool = False,
+
+                 static: List[game.StaticAbility] = None,
+                 activated: List[actions.ActivatedAbility] = None,
+                 effect: Optional[game.Action] = None,
+                 zone:Optional[zones.Zone]=None,
+
+                 power: Optional[int] = None,
+                 toughness: Optional[int] = None,
+                 keywords: Iterable[str] = (),
+                 ):
+
+        super().__init__(game_state)
+        self._zone = zone  # private so setter can add/remove TemporaryEffects
+        self.attrs = Card.CardAttributes(card=self,
+                                         name=name,
+                                         cost=cost,
+                                         power=power,
+                                         toughness=toughness,
+                                         types=types,
+                                         subtypes=set(st.lower() for st in subtypes),
+                                         static=static or [],
+                                         activated=activated or [],
+                                         keywords=set(kw.lower() for kw in keywords))
+        self.tapped = tapped
+        self.counters = defaultdict(lambda: 0)
+        self._effect = effect
+        if game_state is not None:
+            for static in self.attrs.static:
+                static.on_move(self.game_state)
 
     @property
     def zone(self) -> zones.Zone | None:
@@ -122,7 +131,7 @@ class Card(game.GameObject):
     def zone(self, zone: zones.Zone):
         self._zone = zone
         if self.game_state is not None:
-            for static in self.abilities.static:
+            for static in self.attrs.static:
                 static.on_move(self.game_state)
 
 
@@ -136,7 +145,7 @@ class Card(game.GameObject):
             uses_stack: whether the ability is put on the stack.
                         Mana abilities and special actions do not use the stack.
         """
-        self.abilities.activated.append(actions.ActivatedAbility(
+        self.attrs.activated.append(actions.ActivatedAbility(
             cost=cost,
             effect=effect,
             uses_stack=uses_stack
@@ -145,15 +154,15 @@ class Card(game.GameObject):
 
     def triggered(self,
                   when: type[game.Action],
-                  condition: Callable[[Event], bool],
-                  action: actions.Action,
+                  condition: Callable[[game.Event], bool],
+                  action: game.Action,
                   active_zone: zones.Zone = zones.Field()):
         """
         Add a triggered ability to this card.
         """
-        trigger = TriggeredEffect(when=when, condition=condition, action=action)
-        static = StaticAbility(active_zone=active_zone, source=self, effect=trigger)
-        self.abilities.static.append(static)
+        trigger = game.TriggeredEffect(when=when, condition=condition, action=action)
+        static = game.StaticAbility(active_zone=active_zone, source=self, effect=trigger)
+        self.attrs.static.append(static)
         return self
 
     def static(self,
@@ -166,14 +175,14 @@ class Card(game.GameObject):
         Add a static ability to this card.
         """
         full_condition = lambda c: affected_zone.contains(c) and condition(c)
-        effect = StaticEffect(property_name=property_name,
-                              condition=full_condition,
-                              modification=modification)
-        static = StaticAbility(active_zone=active_zone, source=self, effect=effect)
-        self.abilities.static.append(static)
+        effect = game.StaticEffect(property_name=property_name,
+                                   condition=full_condition,
+                                   modification=modification)
+        static = game.StaticAbility(active_zone=active_zone, source=self, effect=effect)
+        self.attrs.static.append(static)
         return self
-    
-    def with_effect(self,effect: actions.Action):
+
+    def with_effect(self,effect: game.Action):
         """
         Add an effect that happens when this card resolves. 
         This is mostly for instants and sorceries, but is also used to implement
@@ -185,40 +194,37 @@ class Card(game.GameObject):
     @property
     def controller(self):
         return self.zone.owner
-    
+
     @property
     def mana_value(self):
-        if self.cost is None:
+        if self.attrs.cost is None:
             return 0
-        return self.cost.mana_value
+        return self.attrs.cost.mana_value
 
-    def copy(self, game_state: GameState):
-        return Card(name=self.name,
-                    types=self._types,
-                    subtypes=self._subtypes,
-                    cost=self.cost,
-                    abilities=self._abilities,
-                    effect=self._effect,
-                    zone=self.zone,
-                    tapped=self.tapped,
+    def copy(self, game_state: game.GameState):
+        card = Card(name=self.attrs.name, # will be overwritten by attrs
                     game_state=game_state,
-                    power=self._power,
-                    toughness=self._toughness,
-                    keywords=self._keywords,
                     )
+        card.attrs = self.attrs.copy(card)
+        card.tapped = self.tapped
+        card._effect = self._effect
+        card._zone = self._zone
+        card.counters = defaultdict(lambda: 0, self.counters)
+        # Don't need to sync the statics, because game_state.copy() will do that
+        return card
 
     def __str__(self):
-        return f"{self.name}({self.zone})"
+        return f"{self.attrs.name}({self.zone})"
 
     def __repr__(self):
         return str(self)
-    
+
     def __hash__(self):
         return hash(
-            (self.name,
-            self.zone,
-            self.tapped
-            )
+            (self.attrs.name,
+             self.zone,
+             self.tapped
+             )
         )
 
     def __eq__(self, value):

@@ -1,6 +1,7 @@
 import random
 from mtg_ai import actions, game, getters, zones, mana
-from mtg_ai.cards import Card, CardType
+from mtg_ai.cards import Card
+from mtg_ai.game import CardType
 import mtg_ai.getters as getters
 
 
@@ -104,7 +105,7 @@ class WindsweptHeath(Card):
             actions.TapSymbol(self) + actions.Sacrifice(self), #todo: pay 1 life
             actions.Search(
                 getters.FromZone(getters.Zone(zones.Deck(),getters.Controller(self))),
-                lambda cards: [[c] for c in cards if "forest" in c.subtypes],
+                lambda cards: [[c] for c in cards if "forest" in c.attrs.subtypes],
                 actions.Play(),
                 actions.Shuffle()
             )
@@ -183,7 +184,7 @@ class Battlement(Card):
             owner = getters.Controller(self)(game_state)
             total = mana.Mana(green=len([card
                 for card in game_state.in_zone(zones.Field(owner=owner))
-                if "defender" in card.keywords
+                if "defender" in card.attrs.keywords
             ]))
             return total
 
@@ -208,7 +209,7 @@ class Axebane(Card):
             owner = getters.Controller(self)(game_state)
             total = mana.Mana(gold=len([card
                 for card in game_state.in_zone(zones.Field(owner=owner))
-                if "defender" in card.keywords
+                if "defender" in card.attrs.keywords
             ]))
             return total
 
@@ -237,7 +238,7 @@ class Arcades(Card):
                 return False
             if arc_here.zone.owner != event.source.zone.owner:
                 return False
-            return "defender" in event.source.keywords
+            return "defender" in event.source.attrs.keywords
         
         self.triggered(
             when=actions.Play,
@@ -263,7 +264,7 @@ class Saruli(Card):
                 actions.TapSymbol(self),
                 actions.Tap(lambda card: (
                     zones.Field().contains(card) 
-                    and CardType.Creature in card.types 
+                    and CardType.Creature in card.attrs.types
                     and card.uid != self.uid)
                 )
             ),
@@ -287,7 +288,7 @@ class SylvanCaryatid(Card):
         )
 
 class CollectedCompany(Card):
-    def __init__(self,game_state: game.GameState) -> Card:
+    def __init__(self,game_state: game.GameState):
         super().__init__(
             name="Collected Company",
             game_state=game_state,
@@ -297,7 +298,7 @@ class CollectedCompany(Card):
         self.with_effect(
             actions.Search(
                 search_in=getters.FromZone(getters.Zone(zones.Deck(), getters.Controller(self)), top=6),
-                search_for=getters.UpTo(2,lambda card: CardType.Creature in card.types and card.cost.mana_value <= 3),
+                search_for=getters.UpTo(2,lambda card: CardType.Creature in card.attrs.types and card.attrs.cost.mana_value <= 3),
                 to_found=actions.Play(),
                 to_rest=actions.MoveTo(getters.Zone(zones.Deck(),getters.Controller(self),zones.BOTTOM))
             )
@@ -318,7 +319,7 @@ class Duskwatch(Card):
             cost=actions.PayMana(mana=mana.Mana(generic=2,green=1)),
             effect=actions.Search(
                 search_in=getters.FromZone(getters.Zone(zones.Deck(), getters.Controller(self)), top=3),
-                search_for=getters.UpTo(1,lambda card: CardType.Creature in card.types),
+                search_for=getters.UpTo(1,lambda card: CardType.Creature in card.attrs.types),
                 to_found=actions.MoveTo(getters.Zone(zones.Hand(),getters.Controller(self))),
                 to_rest=actions.MoveTo(getters.Zone(zones.Deck(),getters.Controller(self),zones.BOTTOM))
             ),
@@ -340,7 +341,7 @@ class TrophyMage(Card):
             condition=lambda ev: ev.source.uid == self.uid,
             action=actions.Search(
                 search_in=getters.FromZone(getters.Zone(zones.Deck(),getters.Controller(self))),
-                search_for=getters.UpTo(1,lambda card: CardType.Artifact in card.types and card.mana_value == 3),
+                search_for=getters.UpTo(1,lambda card: CardType.Artifact in card.attrs.types and card.mana_value == 3),
                 to_found=actions.MoveTo(getters.Zone(zones.Hand(),getters.Controller(self))),
                 to_rest=actions.MoveTo(getters.Zone(zones.Deck(),getters.Controller(self),zones.BOTTOM))
             )
@@ -381,10 +382,10 @@ class Kaysa(Card):
             toughness=3,
         )
         self.static(property_name="power",
-                    condition=lambda c: c.cost.green > 0 and CardType.Creature in c.types,
+                    condition=lambda c: c.attrs.cost.green > 0 and CardType.Creature in c.attrs.types,
                     modification=lambda gs, x: x + 1)
         self.static(property_name="toughness",
-                    condition=lambda c: c.cost.green > 0 and CardType.Creature in c.types,
+                    condition=lambda c: c.attrs.cost.green > 0 and CardType.Creature in c.attrs.types,
                     modification=lambda gs, x: x + 1)
 
 

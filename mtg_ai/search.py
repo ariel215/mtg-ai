@@ -26,19 +26,19 @@ class SearchResult:
 
 def staff_victory(game: GameState) -> bool:
     field = game.in_zone(zones.Field())
-    staff = [card for card in field if card.name == "Staff of Domination"]
+    staff = [card for card in field if card.attrs.name == "Staff of Domination"]
     if not staff:
         return False
     
     scalers = [card for card in field
-        if card.name in ("Overgrown Battlement", "Axebane Guardian") ]
+        if card.attrs.name in ("Overgrown Battlement", "Axebane Guardian") ]
     if not scalers:
         return False
     
     if all(card in game.summoning_sick for card in scalers):
         return False
     
-    walls = [card for card in field if 'wall' in card.subtypes]
+    walls = [card for card in field if 'wall' in card.attrs.subtypes]
     return len(walls) >= 5
 
 def bfs(initial: GameState, condition, timeout=int(1e6)) -> SearchResult:

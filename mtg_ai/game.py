@@ -36,7 +36,7 @@ class GameState:
         self.summoning_sick: Set[int] = set() #: summoning sick cards
         self.land_drops = 1 #: the number of lands that can still be played this turn
         self.active_player = 0
-        self.active_effects: 'List[ActiveEffect]' = []
+        self.active_effects: 'Set[ActiveEffect]' = set()
 
     def __hash__(self):
         return hash(
@@ -278,11 +278,11 @@ class StackAbility(GameObject):
 
 class StaticEffect:
     """
-    A static effect waits for the given property of a Card to be checked. When
-    a Card would return a value for a matching property, it first applies this
+    A static effect waits for the given attribute of a Card to be checked. When
+    a Card would return a value for a matching attribute, it first applies this
     modification to the value.
     Example: "+1/+1 until EoT" are two effects modifying the "power" and
-    "toughness" properties.
+    "toughness" attributes.
     """
     def __init__(self,
                  property_name: str,
@@ -324,7 +324,7 @@ class TriggeredEffect:
             self.action.perform(game_state)
 
 
-class ActiveEffect(GameObject):
+class ActiveEffect:
     """
     An active StaticEffect or TriggeredEffect.
 
@@ -337,20 +337,12 @@ class ActiveEffect(GameObject):
         GameState will delete these ActiveEffects when the duration ends.
     """
     def __init__(self,
-                 game_state: GameState,
                  source: 'Card',
                  effect: StaticEffect | TriggeredEffect,
                  duration = None):
-        super().__init__(game_state)
         self.source = source
         self.effect = effect
         self.duration = duration   # TODO: implement phases and durations
-
-    def copy(self, game_state: GameState) -> 'ActiveEffect':
-        return ActiveEffect(game_state=game_state,
-                            source=self.source,
-                            effect=self.effect,
-                            duration=self.duration)
 
     @property
     def is_trigger(self) -> bool:
@@ -368,40 +360,24 @@ class StaticAbility:
     Includes triggered abilities: "When this creature enters, draw a card"
     is only checked when the creature is in play.
     """
-
     def __init__(self,
                  active_zone: zones.Zone,
                  source: 'Card',
                  effect: StaticEffect | TriggeredEffect):
         self.active_zone = active_zone
-        self.source = source
-        self.effect = effect
-        self.active_uid = None
+        self.active_effect = ActiveEffect(source=source, effect=effect, duration=None)
         self.on_move(source.game_state)
 
     def is_active(self, game_state) -> bool:
-        card = game_state.get(self.source)
+        card = game_state.get(self.active_effect.source)
         return self.active_zone.contains(card)
 
     def on_move(self, game_state: GameState):
-        card = game_state.get(self.source)
-        was_active = self.active_uid is not None
-        now_active = self.active_zone.contains(card)
-        if now_active and not was_active:
-            # Add ActiveEffect to the GameState
-            active = ActiveEffect(game_state=game_state,
-                                  source=card,
-                                  effect=self.effect,
-                                  duration=None)
-            self.active_uid = active.uid
-            game_state.active_effects.append(active)
-        if was_active and not now_active:
-            # Remove ActiveEffect from the GameState
-            game_state.active_effects = [active for active in game_state.active_effects
-                                         if active.uid != self.active_uid]
-            del game_state.objects[self.active_uid]
-            self.active_uid = None
-
+        card = game_state.get(self.active_effect.source)
+        if self.active_zone.contains(card):
+            game_state.active_effects.add(self.active_effect)
+        elif self.active_effect in game_state.active_effects:
+            game_state.active_effects.remove(self.active_effect)
 
 class CardType(str, Enum):
     Land = "land"
