@@ -176,6 +176,7 @@ class Arcades(Card):
             game_state=game_state,
             power=3,
             toughness=5,
+            keywords=["flying", "vigilance"]
         )
         def arc_triggers_if(event):
             gs = event.game_state
@@ -184,7 +185,7 @@ class Arcades(Card):
                 return False
             if arc_here.zone.owner != event.source.zone.owner:
                 return False
-            return "wall" in event.source.subtypes
+            return "defender" in event.source.keywords
         
         self.triggered(
             when=actions.Play,
@@ -327,12 +328,12 @@ class Kaysa(Card):
             power=2,
             toughness=3,
         )
-        self.static(condition=lambda c: c.cost.green > 0 and CardType.Creature in c.types,
-                    property_name="power",
-                    modification=lambda x: x+1)
-        self.static(condition=lambda c: c.cost.green > 0 and CardType.Creature in c.types,
-                    property_name="toughness",
-                    modification=lambda x: x + 1)
+        self.static(property_name="power",
+                    condition=lambda c: c.cost.green > 0 and CardType.Creature in c.types,
+                    modification=lambda gs, x: x + 1)
+        self.static(property_name="toughness",
+                    condition=lambda c: c.cost.green > 0 and CardType.Creature in c.types,
+                    modification=lambda gs, x: x + 1)
 
 
 def build_deck(card_types, game_state, player):

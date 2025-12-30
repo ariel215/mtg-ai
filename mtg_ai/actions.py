@@ -175,22 +175,6 @@ class ActivatedAbility(Action):
             game_state = game_state.take_action(self.effect, effects_choice)
         return Event(self, game_state)
 
-class Trigger:
-    def __init__(self,  when: type[Action],
-                        condition: Callable[[Event], bool],
-                        action: Action,
-                        source: 'Card',
-                        uses_stack: bool = True):
-        self.condition = lambda ev: isinstance(ev.action, when) and condition(ev)
-        self.action = action
-        self.source = source
-        self.uses_stack = uses_stack
-
-    def do(self,game_state: GameState, event):
-        if self.uses_stack:
-            game_state.stack(StackAbility(game_state, self.action))
-        else:
-            self.action.perform(game_state)
 
 class CastSpell(Action):
     def __init__(self,card):

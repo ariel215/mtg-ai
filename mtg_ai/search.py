@@ -1,12 +1,12 @@
 import collections
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 from mtg_ai import actions, decklist, getters, zones
 from mtg_ai.game import GameState
 
 @dataclass
 class SearchResult:
-    final_state: GameState
+    final_state: Optional[GameState]
     remaining: List[GameState]
     n_iters: int
 
@@ -47,11 +47,11 @@ def bfs(initial: GameState, condition, timeout=int(1e6)) -> SearchResult:
                     if child.in_zone(zones.Stack()):
                         child = child.resolve_stack()
                     if condition(child):
-                        return SearchResult(child,queue,i)
+                        return SearchResult(child, queue, i)
                     elif child not in seen:
                         queue.append(child)
                     seen.add(child)
         if i % 100 == 0:
             pass 
     else:
-        return (None, queue,i)
+        return SearchResult(None, queue, -1)

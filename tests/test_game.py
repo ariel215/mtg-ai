@@ -125,12 +125,10 @@ def test_arcades():
     f2 = decklist.Forest(g0)
     assert len(g0.triggers) == 0
     assert len(g0.active_triggers) == 0
-    assert len(StaticAbility.triggers) == 0
     arc = decklist.Arcades(g0)
     omens = decklist.WallOfOmens(g0)
     assert len(g0.triggers) == 0
     assert len(g0.active_triggers) == 0
-    assert len(StaticAbility.triggers) == 2
 
     f1.zone = zones.Deck(0,0)
     f2.zone = zones.Deck(0,1)
@@ -147,6 +145,7 @@ def test_arcades():
     assert len(g1.triggers) == 0
     stack = g1.in_zone(zones.Stack()) 
     assert len(stack) == 2
+
     g2 = g1.resolve_stack()
     f2_1 = g2.get(f2)
     assert isinstance(f2_1.zone, zones.Hand)
@@ -294,36 +293,3 @@ def test_static_anthem():
     steel.zone = zones.Hand(0)
     assert (saruli.power == 0 and saruli.toughness == 3)
     assert (steel.power == 0 and steel.toughness == 4)
-
-
-if __name__ == "__main__":
-    setup_function(None)
-    test_forest()
-    setup_function(None)
-    test_cast()
-    setup_function(None)
-    test_etb()
-    setup_function(None)
-    test_battlement()
-    setup_function(None)
-    test_saruli()
-    setup_function(None)
-    test_gold_mana()
-    setup_function(None)
-    test_arcades()
-    setup_function(None)
-    test_coco()
-    setup_function(None)
-    test_coco_etb()
-    setup_function(None)
-    test_duskwatch()
-    setup_function(None)
-    test_duskwatch_miss()
-    setup_function(None)
-    test_trophy_mage()
-    setup_function(None)
-    test_summoning_sickness()
-    setup_function(None)
-    test_end_turn()
-    setup_function(None)
-    test_static_anthem()
