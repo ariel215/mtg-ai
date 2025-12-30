@@ -1,8 +1,9 @@
 from typing import List, TYPE_CHECKING
-from mtg_ai.game import GameState, Action, ChoiceSet, Event, StackAbility, CardType, StaticEffect, \
+from mtg_ai.game import GameState, Action, ChoiceSet, Event, StackAbility, CardType, StaticEffect
 from mtg_ai import zones
 from mtg_ai.mana import Mana
 from itertools import product
+import mtg_ai.getters as getters
 from mtg_ai.getters import Get
 
 if TYPE_CHECKING:

@@ -1,6 +1,6 @@
 from enum import Enum
 from itertools import chain, product
-from typing import TypeVar, Optional, List, Dict, Any, TYPE_CHECKING, Set
+from typing import TypeVar, Optional, List, Dict, Any, TYPE_CHECKING, Set, Callable
 from . import zones
 from .mana import Mana
 
@@ -24,7 +24,8 @@ class GameState:
     this produces a new GameState with those changes.
     """
 
-    __slots__ = ('objects','players', 'mana_pool','turn_number','triggers','summoning_sick', 'land_drops', 'active_player')
+    __slots__ = ('objects','players', 'mana_pool','turn_number','triggers','summoning_sick',
+                 'land_drops', 'active_player', 'active_effects')
 
     def __init__(self,players: List[Player], mana_pool: Optional['Mana']=None, turn_number:int=0):
         self.objects = []
@@ -133,6 +134,7 @@ class GameObject:
         else:
             self.uid = uid
             game_state.objects[uid] = self
+        self._zone : Optional[zones.Zone] = None
     
     def copy(self, game_state: GameState) -> 'GameObject':
         raise NotImplementedError()
@@ -344,8 +346,8 @@ class ActiveEffect(GameObject):
         self.effect = effect
         self.duration = duration   # TODO: implement phases and durations
 
-    def copy(self) -> 'ActiveEffect':
-        return ActiveEffect(game_state=self.game_state,
+    def copy(self, game_state: GameState) -> 'ActiveEffect':
+        return ActiveEffect(game_state=game_state,
                             source=self.source,
                             effect=self.effect,
                             duration=self.duration)

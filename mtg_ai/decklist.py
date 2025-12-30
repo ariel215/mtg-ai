@@ -1,7 +1,7 @@
 import random
 from mtg_ai import actions, game, getters, zones, mana
 from mtg_ai.cards import Card, CardType
-from mtg_ai.game import StaticEffect
+import mtg_ai.getters as getters
 
 
 
@@ -361,8 +361,8 @@ class Staff(Card):
 class SteelWall(Card):
     def __init__(self, game_state):
         super().__init__(
-            "Steel Wall",
-            mana.Mana(generic=1),
+            name="Steel Wall",
+            cost=mana.Mana(generic=1),
             types=(CardType.Artifact, CardType.Creature),
             game_state=game_state,
             power=0,
@@ -373,8 +373,8 @@ class SteelWall(Card):
 class Kaysa(Card):
     def __init__(self, game_state):
         super().__init__(
-            "Kaysa",
-            mana.Mana(green=2, generic=3),
+            name="Kaysa",
+            cost=mana.Mana(green=2, generic=3),
             types=(CardType.Creature,),
             game_state=game_state,
             power=2,
