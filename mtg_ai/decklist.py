@@ -1,10 +1,14 @@
 import random
 from mtg_ai import actions, game, getters, zones, mana
-from mtg_ai.cards import Card, CardType
+from mtg_ai.cards import Card
+from mtg_ai.game import CardType
+import mtg_ai.getters as getters
+
+
 
 # -------------------------------------------------
 
-# Cards in walls: 
+# Cards in walls:
 
 # [x] Caretaker
 # [x] Caryatid
@@ -50,7 +54,7 @@ class Forest(Card):
 class Plains(Card):
     def __init__(self, game_state):
         super().__init__( "Plains",
-            types=(CardType.Land,), 
+            types=(CardType.Land,),
             subtypes=("plains",),
             game_state=game_state)
         self.activated(
@@ -60,7 +64,7 @@ class Plains(Card):
 
 class Island(Card):
     def __init__(self, game_state):
-        super().__init__( "Island", types=(CardType.Land,), 
+        super().__init__( "Island", types=(CardType.Land,),
         subtypes=("island",),
         game_state=game_state)
         self.activated(
@@ -71,7 +75,7 @@ class Island(Card):
 
 class TempleGarden(Card):
     def __init__(self, game_state):
-        super().__init__( "Temple Garden", types=(CardType.Land,), 
+        super().__init__( "Temple Garden", types=(CardType.Land,),
         subtypes=("forest","plains"),game_state=game_state)
         self.activated(
             actions.TapSymbol(self),
@@ -101,7 +105,7 @@ class WindsweptHeath(Card):
             actions.TapSymbol(self) + actions.Sacrifice(self), #todo: pay 1 life
             actions.Search(
                 getters.FromZone(getters.Zone(zones.Deck(),getters.Controller(self))),
-                lambda cards: [[c] for c in cards if "forest" in c.subtypes],
+                lambda cards: [[c] for c in cards if "forest" in c.attrs.subtypes],
                 actions.Play(),
                 actions.Shuffle()
             )
@@ -115,7 +119,11 @@ class VineTrellis(Card):
             types=(CardType.Creature,),
             subtypes=("wall",),
             cost=mana.Mana(green=1,generic=1),
-            game_state=game_state)
+            game_state=game_state,
+            power=0,
+            toughness=4,
+            keywords=["defender"]
+        )
 
         self.activated(
             actions.TapSymbol(self),
@@ -130,7 +138,11 @@ class WallOfRoots(Card):
             types=(CardType.Creature,),
             subtypes=("wall",),
             cost=mana.Mana(green=1,generic=1),
-            game_state=game_state)
+            game_state=game_state,
+            power=0,
+            toughness=5,
+            keywords=["defender"]
+        )
         # Todo: make this do the right thing
         self.activated(
             actions.Tap(lambda card: card.uid == self.uid) + actions.AddCounter(self,"-0/-1", zones.Field()), 
@@ -144,7 +156,10 @@ class WallOfOmens(Card):
             types=(CardType.Creature,),
             subtypes=("wall",),
             cost = mana.Mana(white=1, generic=1),
-            game_state=game_state
+            game_state=game_state,
+            power=0,
+            toughness=4,
+            keywords=["defender"]
         )
 
         self.triggered(
@@ -160,13 +175,16 @@ class Battlement(Card):
         types=(CardType.Creature,),
         subtypes=("wall",),
         cost = mana.Mana(green=1, generic=1),
-        game_state=game_state
+        game_state=game_state,
+        power=0,
+        toughness=4,
+        keywords=["defender"]
         )
         def mana_added(game_state)->mana.Mana:
             owner = getters.Controller(self)(game_state)
             total = mana.Mana(green=len([card
                 for card in game_state.in_zone(zones.Field(owner=owner))
-                if "wall" in card.subtypes # this is technically wrong -- should be for defenders not walls
+                if "defender" in card.attrs.keywords
             ]))
             return total
 
@@ -182,13 +200,16 @@ class Axebane(Card):
             types=(CardType.Creature,),
             subtypes=("wall",),
             cost = mana.Mana(green=1, generic=2),
-            game_state=game_state
+            game_state=game_state,
+            power=0,
+            toughness=3,
+            keywords=["defender"],
         )
         def mana_added(game_state: game.GameState)->mana.Mana:
             owner = getters.Controller(self)(game_state)
             total = mana.Mana(gold=len([card
                 for card in game_state.in_zone(zones.Field(owner=owner))
-                if "wall" in card.subtypes # this is technically wrong -- should be for defenders not walls
+                if "defender" in card.attrs.keywords
             ]))
             return total
 
@@ -205,7 +226,10 @@ class Arcades(Card):
             types=(CardType.Creature,),
             subtypes=("dragon", ),
             cost=mana.Mana(white=1,blue=1, green=1,generic=1),
-            game_state=game_state
+            game_state=game_state,
+            power=3,
+            toughness=5,
+            keywords=["flying", "vigilance"]
         )
         def arc_triggers_if(event):
             gs = event.game_state
@@ -214,7 +238,7 @@ class Arcades(Card):
                 return False
             if arc_here.zone.owner != event.source.zone.owner:
                 return False
-            return "wall" in event.source.subtypes
+            return "defender" in event.source.attrs.keywords
         
         self.triggered(
             when=actions.Play,
@@ -230,14 +254,17 @@ class Saruli(Card):
             types=(CardType.Creature,),
             subtypes=("wall",),
             cost=mana.Mana(green=1),
-            game_state=game_state
+            game_state=game_state,
+            power=0,
+            toughness=3,
+            keywords=["defender"],
         )
         self.activated(
             cost=game.And(
                 actions.TapSymbol(self),
                 actions.Tap(lambda card: (
                     zones.Field().contains(card) 
-                    and CardType.Creature in card.types 
+                    and CardType.Creature in card.attrs.types
                     and card.uid != self.uid)
                 )
             ),
@@ -250,14 +277,18 @@ class SylvanCaryatid(Card):
                 types=(CardType.Creature,),
                 subtypes=("wall",),
                 cost=mana.Mana(green=1,generic=1),
-                game_state=game_state)
+                game_state=game_state,
+                power=0,
+                toughness=3,
+                keywords=["defender", "hexproof"],
+            )
         self.activated(
             actions.TapSymbol(self),
             actions.AddMana(mana.Mana(gold=1))
         )
 
 class CollectedCompany(Card):
-    def __init__(self,game_state: game.GameState) -> Card:
+    def __init__(self,game_state: game.GameState):
         super().__init__(
             name="Collected Company",
             game_state=game_state,
@@ -267,7 +298,7 @@ class CollectedCompany(Card):
         self.with_effect(
             actions.Search(
                 search_in=getters.FromZone(getters.Zone(zones.Deck(), getters.Controller(self)), top=6),
-                search_for=getters.UpTo(2,lambda card: CardType.Creature in card.types and card.cost.mana_value <= 3),
+                search_for=getters.UpTo(2,lambda card: CardType.Creature in card.attrs.types and card.attrs.cost.mana_value <= 3),
                 to_found=actions.Play(),
                 to_rest=actions.MoveTo(getters.Zone(zones.Deck(),getters.Controller(self),zones.BOTTOM))
             )
@@ -279,14 +310,16 @@ class Duskwatch(Card):
             "Duskwatch Recruiter",
             cost=mana.Mana(green=1,generic=1),
             types=(CardType.Creature,),
-            game_state=game_state
+            game_state=game_state,
+            power=2,
+            toughness=2,
         )
 
         self.activated(
             cost=actions.PayMana(mana=mana.Mana(generic=2,green=1)),
             effect=actions.Search(
                 search_in=getters.FromZone(getters.Zone(zones.Deck(), getters.Controller(self)), top=3),
-                search_for=getters.UpTo(1,lambda card: CardType.Creature in card.types),
+                search_for=getters.UpTo(1,lambda card: CardType.Creature in card.attrs.types),
                 to_found=actions.MoveTo(getters.Zone(zones.Hand(),getters.Controller(self))),
                 to_rest=actions.MoveTo(getters.Zone(zones.Deck(),getters.Controller(self),zones.BOTTOM))
             ),
@@ -298,7 +331,9 @@ class TrophyMage(Card):
             "Trophy Mage",
             cost=mana.Mana(blue=1,generic=2),
             types=(CardType.Creature,),
-            game_state=game_state
+            game_state=game_state,
+            power=2,
+            toughness=2,
         )
 
         self.triggered(
@@ -306,7 +341,7 @@ class TrophyMage(Card):
             condition=lambda ev: ev.source.uid == self.uid,
             action=actions.Search(
                 search_in=getters.FromZone(getters.Zone(zones.Deck(),getters.Controller(self))),
-                search_for=getters.UpTo(1,lambda card: CardType.Artifact in card.types and card.mana_value == 3),
+                search_for=getters.UpTo(1,lambda card: CardType.Artifact in card.attrs.types and card.mana_value == 3),
                 to_found=actions.MoveTo(getters.Zone(zones.Hand(),getters.Controller(self))),
                 to_rest=actions.MoveTo(getters.Zone(zones.Deck(),getters.Controller(self),zones.BOTTOM))
             )
@@ -324,11 +359,40 @@ class Staff(Card):
         # but the only thing we're interested in right now is 
         # "does it win the game" and we're going to hack that on separately
 
+class SteelWall(Card):
+    def __init__(self, game_state):
+        super().__init__(
+            name="Steel Wall",
+            cost=mana.Mana(generic=1),
+            types=(CardType.Artifact, CardType.Creature),
+            game_state=game_state,
+            power=0,
+            toughness=4,
+            keywords=["defender"],
+        )
+
+class Kaysa(Card):
+    def __init__(self, game_state):
+        super().__init__(
+            name="Kaysa",
+            cost=mana.Mana(green=2, generic=3),
+            types=(CardType.Creature,),
+            game_state=game_state,
+            power=2,
+            toughness=3,
+        )
+        self.static(property_name="power",
+                    condition=lambda c: c.attrs.cost.green > 0 and CardType.Creature in c.attrs.types,
+                    modification=lambda gs, x: x + 1)
+        self.static(property_name="toughness",
+                    condition=lambda c: c.attrs.cost.green > 0 and CardType.Creature in c.attrs.types,
+                    modification=lambda gs, x: x + 1)
+
 
 def build_deck(card_types, game_state, player, shuffle: bool=False):
     cards = [ty(game_state) for ty in card_types]
     if shuffle:
         random.shuffle(cards)
-    for i,card in enumerate(cards): 
+    for i,card in enumerate(cards):
         card.zone = zones.Deck(player, position=i)
     return cards

@@ -2,6 +2,7 @@ from tqdm import trange
 from collections.abc import Iterable
 import collections
 from dataclasses import dataclass
+from typing import List, Optional
 from typing import List, Any, Self
 from mtg_ai import actions, decklist, getters, zones
 from mtg_ai.game import GameState, Action
@@ -13,9 +14,11 @@ class HistoryNode:
     action: Action | None
     choice: Any | None
 
-    
+
 @dataclass
 class SearchResult:
+    final_state: Optional[GameState]
+    remaining: List[GameState]
     final_state: HistoryNode | None
     remaining: Iterable[HistoryNode]
     n_iters: int
@@ -23,19 +26,19 @@ class SearchResult:
 
 def staff_victory(game: GameState) -> bool:
     field = game.in_zone(zones.Field())
-    staff = [card for card in field if card.name == "Staff of Domination"]
+    staff = [card for card in field if card.attrs.name == "Staff of Domination"]
     if not staff:
         return False
     
-    scalers = [card for card in field 
-        if card.name in ("Overgrown Battlement", "Axebane Guardian") ]
+    scalers = [card for card in field
+        if card.attrs.name in ("Overgrown Battlement", "Axebane Guardian") ]
     if not scalers:
         return False
     
     if all(card in game.summoning_sick for card in scalers):
         return False
     
-    walls = [card for card in field if 'wall' in card.subtypes]
+    walls = [card for card in field if 'wall' in card.attrs.subtypes]
     return len(walls) >= 5
 
 def bfs(initial: GameState, condition, timeout=int(1e6)) -> SearchResult:

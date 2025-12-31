@@ -1,24 +1,28 @@
-from typing import List
-from mtg_ai.game import GameState, Action, ChoiceSet, Event, StackAbility, CardType
-from mtg_ai import zones, getters
+from typing import List, TYPE_CHECKING
+from mtg_ai.game import GameState, Action, ChoiceSet, Event, StackAbility, CardType, StaticEffect
+from mtg_ai import zones
 from mtg_ai.mana import Mana
 from itertools import product
+import mtg_ai.getters as getters
 from mtg_ai.getters import Get
+
+if TYPE_CHECKING:
+    from cards import Card
 
 
 def possible_actions(game_state: GameState) -> List[Action]:
     """
-    List the actions available to the player with priority 
+    List the actions available to the player with priority
     in the current game state
     """
     player = game_state.players[game_state.active_player]
     hand = game_state.in_zone(zones.Hand(player))
     field = game_state.in_zone(zones.Field(player))
-    field_abilities = [ability for card in field for ability in card.abilities.activated]
+    field_abilities = [ability for card in field for ability in card.attrs.activated]
     return list(
         filter(
             lambda action: len(action.choices(game_state)) > 0, 
-            [PlayLand(card) if CardType.Land in card.types else CastSpell(card) for card in hand ] + field_abilities
+            [PlayLand(card) if CardType.Land in card.attrs.types else CastSpell(card) for card in hand ] + field_abilities
         )
     )
 
@@ -63,7 +67,7 @@ class Play(Action):
     def do(self, game_state: GameState, card):
         card = game_state.get(card)
         card.zone = zones.Field(owner=card.zone.owner)
-        if CardType.Creature in card.types:
+        if CardType.Creature in card.attrs.types:
             game_state.summoning_sick.add(card)
         return Event(self, game_state, source=card,cause=card)
 
@@ -111,7 +115,7 @@ class Sacrifice(Action):
     def __init__(self, card):
         super().__init__()
         self.action = MoveTo(getters.Zone(zones.Grave(),getters.Controller(card)),card)
-    
+
     def choices(self,game_state):
         card = self.action.card(game_state)
         if card and zones.Field().contains(card):
@@ -191,27 +195,12 @@ class ActivatedAbility(Action):
     def do(self, game_state: GameState, costs_choice, effects_choice):
         game_state = game_state.take_action(self.cost, costs_choice)
         if self.uses_stack: 
-            new_ability = StackAbility(game_state=game_state,
-                                   effects=self.effect,
-                                   source=self,
-                                   )
+            new_ability = StackAbility(game_state=game_state, effect=self.effect)
             game_state.stack(new_ability)
         else:
             game_state = game_state.take_action(self.effect, effects_choice)
         return Event(self, game_state)
 
-class Trigger:
-    def __init__(self, condition, action, source, uses_stack=True):
-        self.condition = condition
-        self.action = action
-        self.source = source
-        self.uses_stack = uses_stack
-
-    def do(self,game_state: GameState, event):
-        if self.uses_stack:
-            game_state.stack(StackAbility(game_state, self.action))
-        else:
-            self.action.perform(game_state)
 
 class CastSpell(Action):
     def __init__(self,card):
@@ -224,9 +213,9 @@ class CastSpell(Action):
         if not isinstance(card_zone, zones.Hand):
             return []
 
-        if game_state.mana_pool.can_pay(card.cost):
+        if game_state.mana_pool.can_pay(card.attrs.cost):
             # todo: compute all the ways to pay given the mana available?
-            return [{'mana': card.cost}]
+            return [{'mana': card.attrs.cost}]
         else:
             return []
 
@@ -294,7 +283,7 @@ class Shuffle(Action):
 
     def do(self, game_state,**kwargs): # this is a terrible hack
         return Event(self, game_state)
-        
+
 class PayMana(Action):
     mana = Get()
     def __init__(self, mana=None):

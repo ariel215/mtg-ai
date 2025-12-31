@@ -1,28 +1,31 @@
-from ast import Set
-from abc import ABCMeta, abstractmethod
-from dataclasses import dataclass
 from enum import Enum
 from itertools import chain, product
-from typing import Protocol, TypeVar, Optional, List, Dict, Any
+from typing import TypeVar, Optional, List, Dict, Any, TYPE_CHECKING, Set, Callable
 from . import zones
 from .mana import Mana
 
+if TYPE_CHECKING:
+    from actions import Trigger
+    from cards import Card
+
 Player = int
-StackObject = TypeVar('StackObject')
+GenericStackObject = TypeVar('GenericStackObject')
+GenericGameObject = TypeVar('GenericGameObject', bound='GameObject')
 
 class GameState:
     """
     A single state in a game of MtG.
 
     A GameState consists of the state of each game object in it (cards, abilities, tokens (at some point))
-    plus some additional state. 
+    plus some additional state.
 
     Conceptually, GameStates are immutable. Any change to a GameState should be made
     by calling :GameState.take_action(): with an Action that describes the change to be made;
     this produces a new GameState with those changes.
     """
 
-    __slots__ = ('objects','players', 'mana_pool','turn_number','triggers','summoning_sick', 'land_drops', 'active_player')
+    __slots__ = ('objects','players', 'mana_pool','turn_number','triggers','summoning_sick',
+                 'land_drops', 'active_player', 'active_effects')
 
     def __init__(self,players: List[Player], mana_pool: Optional['Mana']=None, turn_number:int=0):
         self.objects = []
@@ -33,6 +36,7 @@ class GameState:
         self.summoning_sick: Set[int] = set() #: summoning sick cards
         self.land_drops = 1 #: the number of lands that can still be played this turn
         self.active_player = 0
+        self.active_effects: 'Set[ActiveEffect]' = set()
 
     def __hash__(self):
         return hash(
@@ -46,15 +50,16 @@ class GameState:
         new_game_state = GameState(self.players,self.mana_pool.copy(), self.turn_number)
         new_game_state.objects = [obj.copy(new_game_state) for obj in self.objects]
         new_game_state.summoning_sick = {new_game_state.get(card) for card in self.summoning_sick}
-        new_game_state.triggers = self.triggers
+        new_game_state.triggers = self.triggers.copy()
+        new_game_state.active_effects = self.active_effects.copy()
         return new_game_state
 
     def in_zone(self, zone: zones.Zone)->List['GameObject']:
         return sorted([c for c in self.objects if zone.contains(c)],
         key=lambda card: card.zone.position or float('-inf'))
 
-    def get(self, object: 'GameObject') -> 'GameObject':
-        return self.objects[object.uid]
+    def get(self, obj: GenericGameObject) -> GenericGameObject:
+        return self.objects[obj.uid]
 
     def stack(self, card):
         """
@@ -82,21 +87,21 @@ class GameState:
     def take_action(self, action: 'Action', choices: Dict[str, Any] | None = None, copy:bool=True)->'GameState':
         """
         Apply the changes described by :action: and :choices: to this game state.
-        
+
         If :copy: is True (the default), a copy is created and the changes applied to that
         state, preserving the initial state. Otherwise, the changes are made in place.
         This is meant to be a mechanism for saving space.
 
         Returns:
             A game state with the changes made
-        """ 
-        
+        """
+
         choices = choices or {}
         new_state = self.copy() if copy else self
         event = action.perform(new_state, **choices)
         new_state = event.game_state
         new_state.triggers.extend(
-            (event,trigger) for trigger in action.triggers if trigger.condition(event)
+            (event,trigger) for trigger in new_state.active_triggers if trigger.matches(event)
         )
         return new_state
 
@@ -105,9 +110,18 @@ class GameState:
             trigger.do(self, event)
         self.triggers.clear()
 
+    @property
+    def active_triggers(self) -> List['TriggeredEffect']:
+        return [active.effect for active in self.active_effects if active.is_trigger]
+
+    @property
+    def active_statics(self) -> List['StaticEffect']:
+        return [active.effect for active in self.active_effects if active.is_static]
+
+
 class GameObject:
     """
-    Base class for every object that can change between game states, and 
+    Base class for every object that can change between game states, and
     which needs to maintain a persistent identity as it does so.
 
     Classes that inherit from GameObject need to implement :copy():
@@ -120,11 +134,18 @@ class GameObject:
         else:
             self.uid = uid
             game_state.objects[uid] = self
+        self._zone : Optional[zones.Zone] = None
     
     def copy(self, game_state: GameState) -> 'GameObject':
         raise NotImplementedError()
 
+    @property
+    def zone(self) -> zones.Zone | None:
+        return self._zone
 
+    @zone.setter
+    def zone(self, value):
+        self._zone = value
 
 T = TypeVar('T')
 type Choice[T] = Dict[str, T]
@@ -132,7 +153,7 @@ type ChoiceSet[T] = List[Choice[T]]
 
 class Event:
     def __init__(self, action, game_state: GameState, source=None, cause=None, ):
-        self.action = action 
+        self.action = action
         self.source = source
         self.cause = cause
         self.game_state = game_state
@@ -142,7 +163,7 @@ class Action:
     """
     Base class for describing a change or set of changes to the game state.
 
-    Classes that inherit from Action must implement :Action.do():. This 
+    Classes that inherit from Action must implement :Action.do():. This
     method should take as keyword arguments anything the action depends on.
     For example, an action that is performed on a specific card should have `card`
     as one of the keyword parameters in its implementation of :Action.do():
@@ -163,10 +184,6 @@ class Action:
     def bind(self, **kwargs):
          self.params |= kwargs
          return self
- 
-    
-    def __init_subclass__(cls):
-        cls.triggers: List['Trigger'] = []
 
     def choices[T](self,game_state) -> ChoiceSet[T]:
         """
@@ -246,11 +263,10 @@ class StackAbility(GameObject):
 
     def __init__(self,game_state: GameState,
                  effect):
-        self.zone = None 
         super().__init__(game_state)
         self.effect: Action = effect + StackAbility.Cleanup(self)
 
-    def copy(self,game_state: GameState):
+    def copy(self,game_state: GameState) -> 'StackAbility':
         ability = StackAbility(
             game_state=game_state,
             effect=self.effect
@@ -259,6 +275,109 @@ class StackAbility(GameObject):
         ability.effect = self.effect
         return ability
 
+
+class StaticEffect:
+    """
+    A static effect waits for the given attribute of a Card to be checked. When
+    a Card would return a value for a matching attribute, it first applies this
+    modification to the value.
+    Example: "+1/+1 until EoT" are two effects modifying the "power" and
+    "toughness" attributes.
+    """
+    def __init__(self,
+                 property_name: str,
+                 condition: 'Callable[[Card], bool]',
+                 modification: Callable[[GameState, T], T]):
+        self.property_name = property_name
+        self.condition = condition
+        self.modification = modification
+
+    def matches(self, property_name: str, card: 'Card') -> bool:
+        return self.property_name == property_name and self.condition(card)
+
+    def do(self, game_state: GameState, value: T) -> T:
+        return self.modification(game_state, value)
+
+
+class TriggeredEffect:
+    """
+    A triggered effect waits for an Event of the given type. When the GameState
+    performs a matching Event, the GameState should `do` this effect afterward.
+    """
+
+    def __init__(self,  when: type[Action],
+                        condition: Callable[[Event], bool],
+                        action: Action,
+                        uses_stack: bool = True):
+        self.when = when
+        self.condition = condition
+        self.action = action
+        self.uses_stack = uses_stack
+
+    def matches(self, event: Event) -> bool:
+        return isinstance(event.action, self.when) and self.condition(event)
+
+    def do(self, game_state: GameState, event):
+        if self.uses_stack:
+            game_state.stack(StackAbility(game_state, self.action))
+        else:
+            self.action.perform(game_state)
+
+
+class ActiveEffect:
+    """
+    An active StaticEffect or TriggeredEffect.
+
+    There are two ways an ActiveEffect can be created:
+    1) Cards with static abilities will create an ActiveEffect when they enter
+        the zone where the static ability is active, and will delete them when
+        they leave that zone. These ActiveEffects have duration=None.
+    2) Some spells or activated abilities will create an ActiveEffect with a
+        duration. For example, Giant Growth gives +3/+3 until end of turn. The
+        GameState will delete these ActiveEffects when the duration ends.
+    """
+    def __init__(self,
+                 source: 'Card',
+                 effect: StaticEffect | TriggeredEffect,
+                 duration = None):
+        self.source = source
+        self.effect = effect
+        self.duration = duration   # TODO: implement phases and durations
+
+    @property
+    def is_trigger(self) -> bool:
+        return isinstance(self.effect, TriggeredEffect)
+
+    @property
+    def is_static(self) -> bool:
+        return isinstance(self.effect, StaticEffect)
+
+
+class StaticAbility:
+    """
+    Any ability which is automatically active when the card is in the
+    appropriate zone.
+    Includes triggered abilities: "When this creature enters, draw a card"
+    is only checked when the creature is in play.
+    """
+    def __init__(self,
+                 active_zone: zones.Zone,
+                 source: 'Card',
+                 effect: StaticEffect | TriggeredEffect):
+        self.active_zone = active_zone
+        self.active_effect = ActiveEffect(source=source, effect=effect, duration=None)
+        self.on_move(source.game_state)
+
+    def is_active(self, game_state) -> bool:
+        card = game_state.get(self.active_effect.source)
+        return self.active_zone.contains(card)
+
+    def on_move(self, game_state: GameState):
+        card = game_state.get(self.active_effect.source)
+        if self.active_zone.contains(card):
+            game_state.active_effects.add(self.active_effect)
+        elif self.active_effect in game_state.active_effects:
+            game_state.active_effects.remove(self.active_effect)
 
 class CardType(str, Enum):
     Land = "land"
