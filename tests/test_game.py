@@ -167,7 +167,7 @@ def test_coco():
     g0.mana_pool += mana.Mana(green=4)
     g1 = g0.take_action(
         actions.CastSpell(coco),
-        {'mana': g0.mana_pool}
+        {'mana': g0.mana_pool, "effect_choices":{}}
     )
     assert isinstance(g1.get(coco).zone, zones.Stack)
     assert len(g1.in_zone(zones.Stack())) == 1
@@ -175,6 +175,8 @@ def test_coco():
     field = g2.in_zone(zones.Field())
     assert len(field) == 2
     assert all(card.attrs.name == "Axebane Guardian" for card in field)
+    assert (len(g2.in_zone(zones.Grave())) == 1)
+    assert(len(g2.in_zone(zones.Grave(0))) == 1)
 
 def test_coco_etb():
     g0 = game.GameState([0])
@@ -303,3 +305,44 @@ def test_fetch():
     field = gs.in_zone(zones.Field())
     assert len(field) == 1
     assert "forest" in field[0].attrs.subtypes
+
+def test_target():
+    g0 = game.GameState([0])
+    [saruli, steel, unsummon] = decklist.build_deck([decklist.Saruli, decklist.SteelWall, decklist.Unsummon], g0, 0)
+    saruli.zone = zones.Field(0)
+    steel.zone = zones.Field(0)
+    unsummon.zone = zones.Hand(0)
+    g0.mana_pool += mana.Mana(blue=1)
+    cast = actions.CastSpell(unsummon)
+    cast_choices = cast.choices(g0)
+
+    g_onstack = []
+    for choice in cast_choices:
+        g1 = g0.take_action(cast, choice)
+        g_onstack.append(g1)
+        assert(len(g1.in_zone(zones.Stack())) == 1)
+        assert(len(g1.get(unsummon).effect.choose(g1)) == 1)
+    assert(len(g_onstack) == 2)
+    # This test puts both versions of Unsummon on the stack at the same time before letting either
+    # resolve, to make sure that the two GameStates are not affecting each other.
+    bounced_names = set()
+    for g1 in g_onstack:
+        assert (len(g1.get(unsummon).effect.choose(g1)) == 1) # choices locked in
+        g2 = g1.resolve_stack()
+        bounced_names.add(g2.in_zone(zones.Hand())[0].attrs.name)
+        assert(len(g2.in_zone(zones.Stack())) == 0)
+        assert(len(g2.in_zone(zones.Field())) == 1)
+        assert(len(g2.in_zone(zones.Hand())) == 1)
+        assert(len(g2.in_zone(zones.Grave())) == 1)
+        # choices should no longer be locked in. If a second creature is in play again,
+        # Unsummon should be ready to target either one.
+        g2.in_zone(zones.Hand())[0].zone = zones.Field(0)
+        assert (len(g2.get(unsummon).effect.choose(g2)) == 2)
+
+    # confirm the affected card was different in the two branches
+    assert(bounced_names == {'Steel Wall', 'Saruli Caretaker'})
+    # make sure g0 is still unaffected by all this...
+    assert(len(g0.in_zone(zones.Stack())) == 0)
+    assert(len(g0.in_zone(zones.Field())) == 2)
+    assert(len(g0.in_zone(zones.Hand())) == 1)
+    assert(len(g0.in_zone(zones.Grave())) == 0)
