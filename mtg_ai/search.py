@@ -60,7 +60,7 @@ def bfs(initial: GameState, condition, timeout=int(1e6)) -> SearchResult:
             seen.add(child)
         else:
             for action in possible:
-                choices = action.choices(next_state)
+                choices = action.choose(next_state)
                 for choice in choices:
                     child = next_state.take_action(action, choice)
                     while child.in_zone(zones.Stack()):

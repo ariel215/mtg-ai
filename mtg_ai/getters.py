@@ -37,11 +37,13 @@ class Get[T]:
 
 
 class Controller:
+    card = Get()
+
     def __init__(self, card):
         self.card = card
 
     def __call__(self, game_state):
-        return game_state.get(self.card).controller
+        return game_state.get(self.card(game_state)).controller
 
 class Zone:
     owner = Get()

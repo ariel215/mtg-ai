@@ -41,32 +41,30 @@ def tap_mana(card,mana) -> actions.ActivatedAbility:
     )
 
 class Forest(Card):
-    def __init__(self, game_state):
+    def __init__(self, game_state, owner=None):
         super().__init__( "Forest", 
                          types=(CardType.Land,),
                          subtypes=("forest",),
-                         game_state=game_state)
+                         game_state=game_state,
+                         owner=owner)
         self.activated(
             actions.TapSymbol(self),
             actions.AddMana(mana.Mana(green=1))
         )
 
 class Plains(Card):
-    def __init__(self, game_state):
-        super().__init__( "Plains",
-            types=(CardType.Land,),
-            subtypes=("plains",),
-            game_state=game_state)
+    def __init__(self, game_state, owner=None):
+        super().__init__( "Plains", types=(CardType.Land,),
+            subtypes=("plains",), game_state=game_state, owner=owner)
         self.activated(
             actions.TapSymbol(self),
             actions.AddMana(mana.Mana(white=1))
         )
 
 class Island(Card):
-    def __init__(self, game_state):
+    def __init__(self, game_state, owner=None):
         super().__init__( "Island", types=(CardType.Land,),
-        subtypes=("island",),
-        game_state=game_state)
+            subtypes=("island",), game_state=game_state, owner=owner)
         self.activated(
             actions.TapSymbol(self),
             actions.AddMana(mana.Mana(blue=1))
@@ -74,9 +72,9 @@ class Island(Card):
 
 
 class TempleGarden(Card):
-    def __init__(self, game_state):
+    def __init__(self, game_state, owner=None):
         super().__init__( "Temple Garden", types=(CardType.Land,),
-        subtypes=("forest","plains"),game_state=game_state)
+            subtypes=("forest","plains"),game_state=game_state, owner=owner)
         self.activated(
             actions.TapSymbol(self),
             actions.AddMana(mana.Mana(white=1))
@@ -86,9 +84,9 @@ class TempleGarden(Card):
         )
 
 class BreedingPool(Card):
-    def __init__(self, game_state):
+    def __init__(self, game_state, owner=None):
         super().__init__( "Breeding Pool", types=(CardType.Land,),
-        subtypes=("forest","island"), game_state=game_state)
+            subtypes=("forest","island"), game_state=game_state, owner=owner)
         self.activated(
             actions.TapSymbol(self),
             actions.AddMana(mana.Mana(blue=1))
@@ -98,9 +96,9 @@ class BreedingPool(Card):
         )
 
 class WindsweptHeath(Card):
-    def __init__(self, game_state):
+    def __init__(self, game_state, owner=None):
         super().__init__("Windswept Heath", types=(CardType.Land,),
-        game_state=game_state)
+            game_state=game_state, owner=owner)
         self.activated(
             actions.TapSymbol(self) + actions.Sacrifice(self), #todo: pay 1 life
             actions.Search(
@@ -113,7 +111,7 @@ class WindsweptHeath(Card):
 
 
 class VineTrellis(Card):
-    def __init__(self, game_state):
+    def __init__(self, game_state, owner=None):
         super().__init__(     
             name="Vine Trellis",
             types=(CardType.Creature,),
@@ -122,7 +120,8 @@ class VineTrellis(Card):
             game_state=game_state,
             power=0,
             toughness=4,
-            keywords=["defender"]
+            keywords=["defender"],
+            owner = owner or 0
         )
 
         self.activated(
@@ -132,7 +131,7 @@ class VineTrellis(Card):
 
 
 class WallOfRoots(Card):
-    def __init__(self, game_state):
+    def __init__(self, game_state, owner=None):
         super().__init__(     
             name="Wall of Roots",
             types=(CardType.Creature,),
@@ -141,7 +140,8 @@ class WallOfRoots(Card):
             game_state=game_state,
             power=0,
             toughness=5,
-            keywords=["defender"]
+            keywords=["defender"],
+            owner = owner or 0
         )
         # Todo: make this do the right thing
         self.activated(
@@ -150,7 +150,7 @@ class WallOfRoots(Card):
         )
 
 class WallOfOmens(Card):
-    def __init__(self, game_state):
+    def __init__(self, game_state, owner=None):
         super().__init__(
             name="Wall of Omens",
             types=(CardType.Creature,),
@@ -159,7 +159,8 @@ class WallOfOmens(Card):
             game_state=game_state,
             power=0,
             toughness=4,
-            keywords=["defender"]
+            keywords=["defender"],
+            owner = owner or 0
         )
 
         self.triggered(
@@ -169,16 +170,17 @@ class WallOfOmens(Card):
         )
 
 class Battlement(Card):
-    def __init__(self, game_state):
+    def __init__(self, game_state, owner=None):
         super().__init__(
-        name="Overgrown Battlement",
-        types=(CardType.Creature,),
-        subtypes=("wall",),
-        cost = mana.Mana(green=1, generic=1),
-        game_state=game_state,
-        power=0,
-        toughness=4,
-        keywords=["defender"]
+            name="Overgrown Battlement",
+            types=(CardType.Creature,),
+            subtypes=("wall",),
+            cost = mana.Mana(green=1, generic=1),
+            game_state=game_state,
+            power=0,
+            toughness=4,
+            keywords=["defender"],
+            owner = owner or 0
         )
         def mana_added(game_state)->mana.Mana:
             owner = getters.Controller(self)(game_state)
@@ -194,7 +196,7 @@ class Battlement(Card):
         )
 
 class Axebane(Card):
-    def __init__(self, game_state):
+    def __init__(self, game_state, owner=None):
         super().__init__(
             name="Axebane Guardian",
             types=(CardType.Creature,),
@@ -204,6 +206,7 @@ class Axebane(Card):
             power=0,
             toughness=3,
             keywords=["defender"],
+            owner = owner or 0
         )
         def mana_added(game_state: game.GameState)->mana.Mana:
             owner = getters.Controller(self)(game_state)
@@ -220,7 +223,7 @@ class Axebane(Card):
 
 class Arcades(Card):
 
-    def __init__(self, game_state: game.GameState) -> Card: 
+    def __init__(self, game_state: game.GameState, owner=None) -> Card: 
         super().__init__(
             name="Arcades the Strategist",
             types=(CardType.Creature,),
@@ -229,7 +232,8 @@ class Arcades(Card):
             game_state=game_state,
             power=3,
             toughness=5,
-            keywords=["flying", "vigilance"]
+            keywords=["flying", "vigilance"],
+            owner = owner or 0
         )
         def arc_triggers_if(event):
             gs = event.game_state
@@ -248,7 +252,7 @@ class Arcades(Card):
 
 
 class Saruli(Card):
-    def __init__(self, game_state):
+    def __init__(self, game_state, owner=None):
         super().__init__(
             name="Saruli Caretaker",
             types=(CardType.Creature,),
@@ -258,6 +262,7 @@ class Saruli(Card):
             power=0,
             toughness=3,
             keywords=["defender"],
+            owner = owner or 0,
         )
         self.activated(
             cost=game.And(
@@ -272,7 +277,7 @@ class Saruli(Card):
         )
 
 class SylvanCaryatid(Card):
-    def __init__(self, game_state: game.GameState):
+    def __init__(self, game_state: game.GameState, owner=None):
         super().__init__(name="Sylvan Caryatid",
                 types=(CardType.Creature,),
                 subtypes=("wall",),
@@ -281,6 +286,7 @@ class SylvanCaryatid(Card):
                 power=0,
                 toughness=3,
                 keywords=["defender", "hexproof"],
+                owner = owner or 0,
             )
         self.activated(
             actions.TapSymbol(self),
@@ -288,12 +294,13 @@ class SylvanCaryatid(Card):
         )
 
 class CollectedCompany(Card):
-    def __init__(self,game_state: game.GameState):
+    def __init__(self,game_state: game.GameState, owner=None):
         super().__init__(
             name="Collected Company",
             game_state=game_state,
             cost=mana.Mana(green=1, generic=3),
-            types=(CardType.Instant,)
+            types=(CardType.Instant,),
+            owner = owner or 0,
         )
         self.with_effect(
             actions.Search(
@@ -304,8 +311,29 @@ class CollectedCompany(Card):
             )
         )
 
+
+class Unsummon(Card):
+    def __init__(self, game_state, owner=None):
+        super().__init__(
+            name="Unsummon",
+            cost=mana.Mana(blue=1),
+            types=(CardType.Instant,),
+            game_state=game_state,
+            owner = owner or 0,
+        )
+
+        target = actions.Target(criteria=lambda c: CardType.Creature in c.attrs.types,
+                                search_zone=zones.Field(),
+                                game_state=game_state,
+                                )
+        mover = actions.MoveTo(zone=getters.Zone(zones.Hand(), getters.Controller(target)), card=target)
+        mover.register_target(target=target)
+        self.with_effect(mover)
+
+
+
 class Duskwatch(Card):
-    def __init__(self, game_state: game.GameState):
+    def __init__(self, game_state: game.GameState, owner=None):
         super().__init__(
             "Duskwatch Recruiter",
             cost=mana.Mana(green=1,generic=1),
@@ -313,6 +341,7 @@ class Duskwatch(Card):
             game_state=game_state,
             power=2,
             toughness=2,
+            owner = owner or 0,
         )
 
         self.activated(
@@ -326,7 +355,7 @@ class Duskwatch(Card):
         )
 
 class TrophyMage(Card):
-    def __init__(self, game_state: game.GameState):
+    def __init__(self, game_state: game.GameState, owner=None):
         super().__init__(
             "Trophy Mage",
             cost=mana.Mana(blue=1,generic=2),
@@ -334,6 +363,7 @@ class TrophyMage(Card):
             game_state=game_state,
             power=2,
             toughness=2,
+            owner = owner or 0,
         )
 
         self.triggered(
@@ -348,19 +378,20 @@ class TrophyMage(Card):
         )
 
 class Staff(Card):
-    def __init__(self, game_state):
+    def __init__(self, game_state, owner=None):
         super().__init__(
             "Staff of Domination",
             game_state,
             cost=mana.Mana(generic=3),
             types=(CardType.Artifact,),
+            owner = owner or 0,
         )
         # technically this card can do a bunch of stuff,
         # but the only thing we're interested in right now is 
         # "does it win the game" and we're going to hack that on separately
 
 class SteelWall(Card):
-    def __init__(self, game_state):
+    def __init__(self, game_state, owner=None):
         super().__init__(
             name="Steel Wall",
             cost=mana.Mana(generic=1),
@@ -369,10 +400,11 @@ class SteelWall(Card):
             power=0,
             toughness=4,
             keywords=["defender"],
+            owner = owner or 0,
         )
 
 class Kaysa(Card):
-    def __init__(self, game_state):
+    def __init__(self, game_state, owner=None):
         super().__init__(
             name="Kaysa",
             cost=mana.Mana(green=2, generic=3),
@@ -380,6 +412,7 @@ class Kaysa(Card):
             game_state=game_state,
             power=2,
             toughness=3,
+            owner = owner or 0,
         )
         self.static(property_name="power",
                     condition=lambda c: c.attrs.cost.green > 0 and CardType.Creature in c.attrs.types,
@@ -390,7 +423,7 @@ class Kaysa(Card):
 
 
 def build_deck(card_types, game_state, player, shuffle: bool=False):
-    cards = [ty(game_state) for ty in card_types]
+    cards = [ty(game_state, owner=player) for ty in card_types]
     if shuffle:
         random.shuffle(cards)
     for i,card in enumerate(cards):
