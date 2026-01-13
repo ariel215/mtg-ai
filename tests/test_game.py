@@ -308,7 +308,7 @@ def test_fetch():
 
 def test_target():
     g0 = game.GameState([0])
-    [saruli, steel, unsummon] = decklist.build_deck([decklist.Saruli, decklist.SteelWall, decklist.Unsummon], g0, 0)
+    [saruli, steel, unsummon] = decklist.build_deck(g0, 0, [decklist.Saruli, decklist.SteelWall, decklist.Unsummon])
     saruli.zone = zones.Field(0)
     steel.zone = zones.Field(0)
     unsummon.zone = zones.Hand(0)

@@ -82,13 +82,16 @@ class GameState:
         Resolve the top of the stack
         """
         stack = self.in_zone(zones.Stack())
-        top = stack.pop()
-        chosen = top.effect.get_choices(self)
+        if stack:
+            top = stack.pop()
+            chosen = top.effect.get_choices(self)
 
-        new_state = self.take_action(top.effect, chosen[0])
+            new_state = self.take_action(top.effect, chosen[0])
 
-        top.effect.unset_targets(new_state)
-        return new_state
+            top.effect.unset_targets(new_state)
+            return new_state
+        else:
+            return self
 
     def take_action(self, action: 'Action', choices: Dict[str, Any] | None = None, copy:bool=True)->'GameState':
         """
@@ -299,7 +302,8 @@ class And(Action):
     def __str__(self):
         return f"({",".join(str(act) for act in self.actions)})"
 
-
+    def __repr__(self):
+        return str(self)
 
 class StackAbility(GameObject):
     """

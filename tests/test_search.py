@@ -104,5 +104,6 @@ def test_mcts():
         [decklist.Axebane, decklist.WallOfOmens, decklist.Staff, decklist.Forest],
     )
     searcher = search.MCTSSearcher(gs,{},search.staff_victory,1.2,n_iters=1000)
+    searcher.choose()
     assert any(entry.value > 0 for entry in searcher.stats.values())
 

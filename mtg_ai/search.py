@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from typing import List, Any, Self, Dict, Callable, Tuple, Optional
 from mtg_ai import actions, decklist, getters, zones
 from mtg_ai.game import GameState, Action
+import logging
+
+logger = logging.getLogger(__name__, )
 
 @dataclass(slots=True)
 class HistoryNode:
@@ -56,7 +59,7 @@ def bfs(initial: GameState, condition, timeout=int(1e6)) -> SearchResult:
     seen = {initial}
     action = None
     choice = None
-    for i in trange(timeout):
+    for i in range(timeout):
         next_node  = queue.popleft()
         next_state = advance(next_node.game_state)
         if condition(next_state):
@@ -121,15 +124,19 @@ class MCTSSearcher:
         return value + ucb
 
     def playout(self, state: HistoryNode, max_turns: int) -> float:
+        logger.debug("Random playout")
         current = state.game_state
         while current.turn_number < max_turns:
             if self.condition(current):
+                logger.debug(f"Found victory by turn {current.turn_number}")
                 return 1.0 / current.turn_number ** 2
             possible = actions.possible_actions(current) or [END_TURN]
             choices = [(action,choice) for action in possible for choice in action.choices(current)]
             (action,choice) = random.choice(choices)
-            current = current.take_action(action, choice)
+            logger.debug(f"Taking {action} with choices {str(choices)}")
+            current = current.take_action(action, choice).resolve_stack()
         # failed to find the desired game state soon enough; count this as a failure
+        logger.debug(f"failed to find victory before turn {max_turns}")
         return 0
 
     def backpropogate(self, state: HistoryNode, value: float):
@@ -150,6 +157,7 @@ class MCTSSearcher:
                 break
             children = self.expand(current)
             if all(child.game_state in self.stats for child in children):
+                logger.debug("Choosing ucb optimal child")
                 scores = [self.score(child) for child in children]
                 def key(i_s):
                     return i_s[1]

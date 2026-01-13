@@ -207,6 +207,7 @@ class CastSpell(Action):
         super().__init__()
         self.card = card
 
+
     def choices(self, game_state: GameState):
         card = game_state.get(self.card)
         card_zone = card.zone

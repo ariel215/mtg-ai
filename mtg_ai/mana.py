@@ -13,6 +13,12 @@ class Mana:
     colorless: int = 0
     generic: int = 0
 
+    def __str__(self):
+        return f"Mana({','.join(f'{k}={v}' for k,v in asdict(self).items() if v)})"
+
+    def __repr__(self):
+        return str(self)
+
     @classmethod
     def parse(cls, amount: str):
         mana = cls()
