@@ -36,11 +36,12 @@ What should `Game.copy` do? It should copy all the game objects inside,
 and update which game state owns them.
 
 A design:
+
 ```python
   class GameState:
     objects: Dict[Id, GameObject]
     ...
-    
+
     def copy(self)->GameState:
       new_game = GameState()
       # copy over non-object properties
@@ -85,21 +86,21 @@ syncronized as the game state evolves:
 To work through how this works, let's walk through some situations.
 
 First, let's say a.x = b, and a.game_state = b.game_state = G0.
-What actually happens is a._referent = b.uid. Then when we
+What actually happens is a.\_referent = b.uid. Then when we
 want to print(a.x), this turns into print(a.game_state[a._referent])
 = print(G0[b.uid) = print(b). So far so good.
 
 NOw let's update the state: G1=G0.change(b).
 G1.objects = {
-  a.uid: a_new,
-  b.uid: b_new
+a.uid: a_new,
+b.uid: b_new
 }
 
 So importantly, a.x still resolves to b. This is good; history needs to be
 immutable.
 
 But G1.get(a).x == G1.get(a.x) == a_new.x == b_new. We can easily track objects
-between game states as they change.  
+between game states as they change.
 
 ## Actions, Choices and the Stack
 
@@ -114,20 +115,21 @@ Consider: you control two creatures and go to cast Giant Growth.
 You are asked to chose a target before putting the card on the stack.
 What does this look like?
 
-
 > - Ask PlayCard(Giant Growth): Can I do this?
+
     - Can I pay all costs?
-      * PlayCard: Is there more mana in the pool than in the card's cost? 
+      * PlayCard: Is there more mana in the pool than in the card's cost?
     - Can I make all choices?
       * PlayCard: choose targets for all effects on the card, if any
       - Ask the card's effect: what can you target?
       * {Suntail Hawk, Grizzly Bears}
-  - if so: do it
-    - pay cost
-    - select an element of the choice set
-    - do the effect to the gamestate with the choice made
-      * gamestate.cast(giant growth, targets=[grizzly bears])
-        * giant_growth.set(targets=[grizzly_bears])
+
+- if so: do it
+  - pay cost
+  - select an element of the choice set
+  - do the effect to the gamestate with the choice made
+    - gamestate.cast(giant growth, targets=[grizzly bears])
+      - giant_growth.set(targets=[grizzly_bears])
 
 Conceptually, selecting targets is just another kind of cost, in that it's
 a thing that needs to be possible before you can take the action. Similarly,
@@ -139,12 +141,12 @@ everything we need to do?
 if so, we do it with the selected choice set
 
 so a Choice here is a collection of some kind, probably labelled?
-And a ChoiceSet is what it sounds like, a set of choices.    
+And a ChoiceSet is what it sounds like, a set of choices.
 
 ## Triggers
 
 Triggers are effects that go onto the stack when "something happens".
-What constitutes "something"?  There are no real boundaries, but probably
+What constitutes "something"? There are no real boundaries, but probably
 80% of triggers are triggered by a card changing zones: etbs, dying,
 leaving, drawing, discarding, milling, are all special cases of a card changing
 zones. The next 5-10% are delayed triggers that occur at the beginning of a
@@ -160,7 +162,8 @@ is live for as long as some permanent remains in play, either a static
 modifier or something watching for triggers. We need to be able to make sure
 its lifespan is tied to its card.
 
-The components of a triggered ability are: 
+The components of a triggered ability are:
+
 - The action that triggers it
   - This might be tied to a particular player or card or set of cards
 - The object perfoming the action
@@ -168,9 +171,9 @@ The components of a triggered ability are:
 - The effect of the trigger
 
 Breaking down Wall of Omens'ability -- "When CARDNAME enters the battlefield, draw a card" in this way:
+
 - the triggering action is: a card enters the battlefield
   - the action is triggered if: the card is CARDNAME
 - the object performing the action: CARDNAME
 - the object creating the trigger: CARDNAME
 - the effect: CARDNAME's owner draws a card
-

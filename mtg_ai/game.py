@@ -13,6 +13,10 @@ Player = int
 GenericStackObject = TypeVar('GenericStackObject')
 GenericGameObject = TypeVar('GenericGameObject', bound='GameObject')
 
+class HashKind(Enum):
+    FULL = 0
+    VISIBLE = 1    
+
 class GameState:
     """
     A single state in a game of MtG.
@@ -25,10 +29,16 @@ class GameState:
     this produces a new GameState with those changes.
     """
 
-    __slots__ = ('objects','players', 'mana_pool','turn_number','triggers','summoning_sick',
+    __slots__ = ('hash_kind','objects','players', 'mana_pool','turn_number','triggers','summoning_sick', 
                  'land_drops', 'active_player', 'active_effects')
 
-    def __init__(self,players: List[Player], mana_pool: Optional['Mana']=None, turn_number:int=0):
+    def __init__(self,players: List[Player], *, 
+                mana_pool: Optional['Mana']=None, 
+                turn_number:int=0,
+                land_drops: int = 1,
+                active_player: Player | None = None,
+                hash_kind:HashKind = HashKind.FULL):
+        self.hash_kind = hash_kind
         self.objects = []
         self.players = players
         self.mana_pool = mana_pool or Mana()
@@ -39,16 +49,10 @@ class GameState:
         self.active_player = 0
         self.active_effects: 'Set[ActiveEffect]' = set()
 
-    def __hash__(self):
-        return hash(
-            tuple(chain((self.mana_pool, self.active_player),self.objects))
-        )
-    
-    def __eq__(self, value):
-        return type(self) is type(value) and hash(self) == hash(value)
-            
+
     def copy(self) -> 'GameState':
-        new_game_state = GameState(self.players,self.mana_pool.copy(), self.turn_number)
+        new_game_state = GameState(self.players,mana_pool=self.mana_pool.copy(), turn_number=self.turn_number,
+            land_drops=self.land_drops, hash_kind=self.hash_kind, active_player=self.active_player)
         new_game_state.objects = [obj.copy(new_game_state) for obj in self.objects]
         new_game_state.summoning_sick = {new_game_state.get(card) for card in self.summoning_sick}
         new_game_state.triggers = self.triggers.copy()
@@ -64,6 +68,13 @@ class GameState:
             return self.objects[obj.uid]
         except AttributeError:
             return self.objects[obj(self).uid]
+
+    def visible(self) -> List['GameObject']:
+        return (
+            self.in_zone(zones.Field()) 
+            + self.in_zone(zones.Hand(self.active_player))
+            + self.in_zone(zones.Stack())
+        )
 
     def stack(self, card):
         """
@@ -118,7 +129,7 @@ class GameState:
         for (event, trigger) in self.triggers:
             trigger.do(self, event)
         self.triggers.clear()
-
+    
     @property
     def active_triggers(self) -> List['TriggeredEffect']:
         return [active.effect for active in self.active_effects if active.is_trigger]
@@ -126,7 +137,6 @@ class GameState:
     @property
     def active_statics(self) -> List['StaticEffect']:
         return [active.effect for active in self.active_effects if active.is_static]
-
 
 class GameObject:
     """

@@ -18,12 +18,16 @@ def possible_actions(game_state: GameState) -> List[Action]:
     """
     player = game_state.players[game_state.active_player]
     hand = game_state.in_zone(zones.Hand(player))
+    actions = [PlayLand(card) if CardType.Land in card.attrs.types else CastSpell(card) for card in hand ]
     field = game_state.in_zone(zones.Field(player))
     field_abilities = [ability for card in field for ability in card.attrs.activated]
+    actions += field_abilities
+    if len(game_state.in_zone(zones.Stack())) > 0:
+        actions.append(ResolveStack())
     return list(
         filter(
             lambda action: len(action.get_choices(game_state)) > 0, 
-            [PlayLand(card) if CardType.Land in card.attrs.types else CastSpell(card) for card in hand ] + field_abilities
+             actions
         )
     )
 
@@ -339,6 +343,19 @@ class AddCounter(Action):
         card = game_state.get(self.card)
         card.counters[self.counter] += 1
 
+class ResolveStack(Action):
+    def __init__(self):
+        super().__init__()
+
+    def choices(self,game_state:GameState):
+        stack = game_state.in_zone(zones.Stack())
+        top = stack[-1]
+        return top.effect.get_choices(game_state)
+
+    def do(self, game_state, **kwargs):
+        stack = game_state.in_zone(zones.Stack())
+        top = stack[-1]
+        return top.effect.perform(game_state, **kwargs) 
 
 
 class EndTurn(Action):

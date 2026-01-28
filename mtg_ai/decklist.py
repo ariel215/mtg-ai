@@ -391,41 +391,45 @@ class Staff(Card):
         # "does it win the game" and we're going to hack that on separately
 
 class SteelWall(Card):
-    def __init__(self, game_state, owner=None):
-        super().__init__(
-            name="Steel Wall",
-            cost=mana.Mana(generic=1),
-            types=(CardType.Artifact, CardType.Creature),
-            game_state=game_state,
-            power=0,
-            toughness=4,
-            keywords=["defender"],
-            owner = owner or 0,
-        )
-
+     def __init__(self, game_state, owner=None):
+         super().__init__(
+             name="Steel Wall",
+             cost=mana.Mana(generic=1),
+             types=(CardType.Artifact, CardType.Creature),
+             game_state=game_state,
+             power=0,
+             toughness=4,
+             keywords=["defender"],
+             owner = owner or 0,
+         )
+ 
 class Kaysa(Card):
-    def __init__(self, game_state, owner=None):
-        super().__init__(
-            name="Kaysa",
-            cost=mana.Mana(green=2, generic=3),
-            types=(CardType.Creature,),
-            game_state=game_state,
-            power=2,
-            toughness=3,
-            owner = owner or 0,
-        )
-        self.static(property_name="power",
-                    condition=lambda c: c.attrs.cost.green > 0 and CardType.Creature in c.attrs.types,
-                    modification=lambda gs, x: x + 1)
-        self.static(property_name="toughness",
-                    condition=lambda c: c.attrs.cost.green > 0 and CardType.Creature in c.attrs.types,
-                    modification=lambda gs, x: x + 1)
+     def __init__(self, game_state, owner=None):
+         super().__init__(
+             name="Kaysa",
+             cost=mana.Mana(green=2, generic=3),
+             types=(CardType.Creature,),
+             game_state=game_state,
+             power=2,
+             toughness=3,
+             owner = owner or 0,
+         )
+         self.static(property_name="power",
+                     condition=lambda c: c.attrs.cost.green > 0 and CardType.Creature in c.attrs.types,
+                     modification=lambda gs, x: x + 1)
+         self.static(property_name="toughness",
+                     condition=lambda c: c.attrs.cost.green > 0 and CardType.Creature in c.attrs.types,
+                     modification=lambda gs, x: x + 1)
 
-
-def build_deck(game_state, player, card_types, shuffle: bool=False):
+ 
+def build_deck(game_state, player, card_types, shuffle: bool=False, hand_size=0):
     cards = [ty(game_state, owner=player) for ty in card_types]
     if shuffle:
         random.shuffle(cards)
-    for i,card in enumerate(cards):
+    hand = cards[:hand_size]
+    deck = cards[hand_size:]
+    for i,card in enumerate(deck):
         card.zone = zones.Deck(player, position=i)
-    return cards
+    for i,card in enumerate(hand):
+        card.zone = zones.Hand(owner=player)
+    return (hand, deck)

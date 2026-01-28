@@ -1,3 +1,4 @@
+from mtg_ai.game import HashKind
 from mtg_ai import cards, game, actions, getters, zones, mana, decklist
 from mtg_ai.game import StaticEffect, StaticAbility
 
@@ -262,7 +263,7 @@ def test_summoning_sickness():
 
 def test_end_turn():
     gs = game.GameState([0])
-    [forest] = decklist.build_deck(gs, 0,[decklist.Forest])
+    (_,[forest]) = decklist.build_deck(gs, 0,[decklist.Forest],hand_size=0)
     end_turn = actions.EndTurn() + actions.Draw(getters.ActivePlayer())
     choices = end_turn.get_choices(gs)[0]
     gs = gs.take_action(end_turn, choices)
@@ -270,10 +271,9 @@ def test_end_turn():
 
 def test_static_anthem():
     gs = game.GameState([0])
-    [saruli, steel, kaysa] = decklist.build_deck(gs, 0,[decklist.Saruli, decklist.SteelWall, decklist.Kaysa])
+    (_, [saruli, steel, kaysa]) = decklist.build_deck(gs, 0,[decklist.Saruli, decklist.SteelWall, decklist.Kaysa])
     saruli.zone = zones.Field(0)
     steel.zone = zones.Field(0)
-    kaysa.zone = zones.Hand(0)
     assert(saruli.attrs.power == 0 and saruli.attrs.toughness == 3)
     assert(steel.attrs.power == 0 and steel.attrs.toughness == 4)
     assert (kaysa.attrs.power == 2 and kaysa.attrs.toughness == 3)
@@ -293,7 +293,8 @@ def test_static_anthem():
 def test_fetch():
     gs = game.GameState([0])
     decklist.build_deck(gs, 0,
-    [decklist.Island, decklist.Forest] + [decklist.Island for _ in range(4)]
+    [decklist.Island, decklist.Forest] + [decklist.Island for _ in range(4)],
+        hand_size=0
     )
     fetch = decklist.WindsweptHeath(gs)
     fetch.zone = zones.Field(0)
@@ -308,10 +309,10 @@ def test_fetch():
 
 def test_target():
     g0 = game.GameState([0])
-    [saruli, steel, unsummon] = decklist.build_deck(g0, 0, [decklist.Saruli, decklist.SteelWall, decklist.Unsummon])
+    ([unsummon],[saruli, steel]) = decklist.build_deck(g0, 0, [ decklist.Unsummon, decklist.Saruli, decklist.SteelWall,],
+        hand_size=1)
     saruli.zone = zones.Field(0)
     steel.zone = zones.Field(0)
-    unsummon.zone = zones.Hand(0)
     g0.mana_pool += mana.Mana(blue=1)
     cast = actions.CastSpell(unsummon)
     cast_choices = cast.get_choices(g0)

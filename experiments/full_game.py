@@ -1,6 +1,14 @@
-import mtg_ai.search
+import mtg_ai.zones
+from mtg_ai.search import SearchResult, HistoryNode
+from mtg_ai import search
 from mtg_ai.game import GameState
 from mtg_ai.decklist import WindsweptHeath, TempleGarden, Forest, Island, Plains, BreedingPool, Saruli, WallOfRoots, SylvanCaryatid, Battlement, Axebane, TrophyMage, Staff, Duskwatch, Arcades, CollectedCompany, build_deck
+import logging
+
+# logging.basicConfig(level=logging.DEBUG,filename="fullgame.log",filemode='w')
+logger = logging.getLogger(__name__)
+
+
 CARDS = [
     (WindsweptHeath , 8),
     (TempleGarden , 3),
@@ -22,15 +30,62 @@ CARDS = [
 
 DECK = [ cardtype for cardtype, i in CARDS for _ in range(i) ]
 
-def play_game(limit) -> mtg_ai.search.SearchResult:
+def play_game(limit) -> search.SearchResult:
     player = 0
     gs = GameState([player])
     deck = build_deck(gs, player,DECK,  shuffle=True)
-    return mtg_ai.search.bfs(gs, mtg_ai.search.staff_victory, timeout=limit)
+    return search.bfs(gs, search.staff_victory, timeout=limit)
+
+
+def play_mcts_game(limit: int) -> SearchResult:
+    statistics = {}
+    player = 0
+    current = HistoryNode( GameState([player]))
+    deck = build_deck(current.game_state, player,DECK,  shuffle=True,hand_size=7)
+    
+    params = {
+        'C': 1.5,
+        'max_turns': limit,
+        'n_iters': 250
+    }
+
+    while not search.staff_victory(current.game_state) and current.game_state.turn_number < params['max_turns']:
+        print(f"hand: {[card.attrs.name for card in current.game_state.in_zone(mtg_ai.zones.Hand())]}")
+        print(f"field: {[card.attrs.name for card in current.game_state.in_zone(mtg_ai.zones.Field())]}")
+        print(f"mana: {current.game_state.mana_pool}")
+        searcher = search.MCTSSearcher(current.game_state, statistics,search.staff_victory,**params)
+        print(f"choices: {[str(node.action) for node in searcher.expand(searcher.root)]}")
+        current = searcher.choose()
+        print(f"(t{current.game_state.turn_number}: {current.action}, {current.choice})")
+
+    
+    if search.staff_victory(current.game_state):
+        return SearchResult(current,[],0)
+    else:
+        return SearchResult(None, [current], 0)
 
 if __name__ == "__main__":
-    result = play_game(100000)
-    if result.final_state:
-        print(f"found path to victory after {result.final_state.game_state.turn_number} turns")
-    else:
-        print("could not find path to victory")
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('mode', default='bfs', choices=('bfs', 'mcts'))
+    args = parser.parse_args()
+    if args.mode == 'bfs':
+        result = play_game(100000)
+        if result.final_state:
+            print(f"found path to victory after {result.final_state.game_state.turn_number} turns")
+        else:
+            print("could not find path to victory")
+    
+    elif args.mode == 'mcts':
+        import random
+        # seed = random.randint(0,10000000000)
+        # print(f"seed: {seed}")
+        # seed = 6128917386
+        # random.seed(seed)
+        logging.basicConfig(filename="mcts.log", filemode='w', level=logging.DEBUG)
+        turn_limit= 10
+        result = play_mcts_game(turn_limit)
+        if result.final_state:
+            print(f"found victory in {result.final_state.game_state.turn_number} turns")
+        else:
+            print(f"could not find victory in {turn_limit} turns")

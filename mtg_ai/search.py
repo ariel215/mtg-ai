@@ -1,3 +1,4 @@
+from mtg_ai.actions import Search
 import math
 import random
 from tqdm import trange
@@ -13,10 +14,10 @@ logger = logging.getLogger(__name__, )
 
 @dataclass(slots=True)
 class HistoryNode:
-    parent: Self | None
     game_state: GameState
-    action: Action | None
-    choice: Any | None
+    parent: Self | None = None
+    action: Action | None = None
+    choice: Any | None = None
 
 
 @dataclass
@@ -44,6 +45,7 @@ def staff_victory(game: GameState) -> bool:
     return len(walls) >= 5
 
 END_TURN = actions.EndTurn() + actions.Draw(getters.ActivePlayer())
+
 def advance(gs: GameState) -> GameState:
     possible = actions.possible_actions(gs)
     possible_choices = [(a,c) for a in possible for c in a.choices(gs) ]
@@ -54,7 +56,7 @@ def advance(gs: GameState) -> GameState:
     return gs
 
 def bfs(initial: GameState, condition, timeout=int(1e6)) -> SearchResult:    
-    root = HistoryNode(None, initial,None, None)
+    root = HistoryNode(initial)
     queue = collections.deque([root])
     seen = {initial}
     action = None
@@ -63,7 +65,7 @@ def bfs(initial: GameState, condition, timeout=int(1e6)) -> SearchResult:
         next_node  = queue.popleft()
         next_state = advance(next_node.game_state)
         if condition(next_state):
-            node = HistoryNode(next_node,next_state,action,choice)
+            node = HistoryNode(next_state,next_node,action,choice)
             return SearchResult(node,queue,i)
         possible = actions.possible_actions(next_state) or [END_TURN]
         for action in possible:
@@ -72,7 +74,7 @@ def bfs(initial: GameState, condition, timeout=int(1e6)) -> SearchResult:
                 child = next_state.take_action(action, choice)
                 while child.in_zone(zones.Stack()):
                     child = child.resolve_stack() #todo: make this an Action
-                node = HistoryNode(next_node,child,action, choice)
+                node = HistoryNode(child,next_node,action, choice)
                 if condition(child):
                     return SearchResult(node,queue,i)
                 elif child not in seen:
@@ -89,8 +91,7 @@ class MCTSInfo:
 class MCTSSearcher:
     def __init__(self, initial_state: GameState,statistics:Dict[GameState, MCTSInfo], condition: Callable[[GameState],bool],
         C: float, max_turns: int = 10, n_iters: int=1000):
-        self.root = HistoryNode(None,
-        initial_state,None,None)
+        self.root = HistoryNode(initial_state)
         self.stats = statistics
         self.condition = condition
         self.C = C
@@ -101,14 +102,14 @@ class MCTSSearcher:
     def expand(self, node: HistoryNode) -> List[HistoryNode]:
         """
         Produce a list of children of the current game state, labelled by the action taken 
-        and the choices made for that action
+        and the choices made for that action. 
         """
         state = node.game_state
         possible = actions.possible_actions(state) or [END_TURN]
         choices = [
             (action,choice) for action in possible for choice in action.choices(state)]
         children = [state.take_action(action,choice) for (action,choice) in choices]
-        return [HistoryNode(node,child, action, choice)
+        return [HistoryNode(child,node, action, choice)
             for (child,(action,choice)) in zip(children, choices)
         ]
 
@@ -149,40 +150,73 @@ class MCTSSearcher:
             self.stats[state.game_state] = info
             state = state.parent
 
-    def explore(self):
-        current = self.root
+    def explore_node(self, node: HistoryNode):
+        current = node
         while not self.condition(current.game_state):
             if current.game_state.turn_number > self.max_turns:
                 value = 0
                 break
             children = self.expand(current)
-            if all(child.game_state in self.stats for child in children):
-                logger.debug("Choosing ucb optimal child")
+            unexplored = [child for child in children if child.game_state not in self.stats]
+            if unexplored:
+                current = random.choice(children)
+                value = self.playout(current,self.max_turns - current.game_state.turn_number)
+                break
+            else:
                 scores = [self.score(child) for child in children]
                 def key(i_s):
                     return i_s[1]
                 i,_ = max(enumerate(scores, ), key=key)
                 current = children[i]
-            else:
-                remaining = [child for child in children if child.game_state not in self.stats]
-                current = random.choice(remaining)
-                value = self.playout(current,self.max_turns - current.game_state.turn_number)
-                break
         else:
             value = 1.0 / current.game_state.turn_number
         self.backpropogate(current, value)
+        assert current.game_state in self.stats
+        assert node.game_state in self.stats
 
-    def choose(self) -> GameState:
+    def explore(self) -> List[HistoryNode]:
+        """
+        Run an iteration of MCTS to compute the best next move.
+        """
+        children = self.expand(self.root)
+
+        for i,child in enumerate(children):
+            if i > 0:
+                assert children[i-1].game_state in self.stats
+            updated = self.explore_node(child)
+            if i > 0:
+                assert children[i-1].game_state in self.stats
+        assert all(child.game_state in self.stats for child in children)
+
+        def key(i_s):
+            return i_s[1]
+
+        for _ in range(self.n_iters):
+            scores = [self.score(child) for child in children]
+            i,_ = max(enumerate(scores, ), key=key)
+            self.explore_node(children[i])
+
+        assert all(child.game_state in self.stats for child in children)
+        return children
+
+
+    def choose(self) -> HistoryNode:
         """
         Choose the best move to take from self.root.
 
         Explores the game tree starting at :self.root: for :self.n_iters:
         simulations, then selects the child of :self.root: that has been 
-        visited the most times
+        visited the most times. Exception: we always prefer not ending the turn
+        to ending the turn.
         """
         children = self.expand(self.root)
-        for _ in range(max(self.n_iters, len(children))):
-            self.explore()
-        assert all(child.game_state in self.stats for child in children)
-        nvisits = [(child.game_state, self.stats[child.game_state].visits) for child in children]
+        logger.debug("children: %s", children)
+        if len(children) == 1:
+            return children[0]
+        new_children = self.explore()
+        assert len(children) == len(new_children)
+        nvisits = [(child, self.stats[child.game_state].visits) for child in new_children]
+        if len(nvisits) > 1:
+            nvisits = [pair for pair in nvisits if pair[0].game_state is not END_TURN]
         return max(nvisits, key=lambda p: p[1])[0]
+
