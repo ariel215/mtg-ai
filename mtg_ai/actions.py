@@ -114,7 +114,8 @@ class MoveTo(Action):
 class Sacrifice(Action):
     def __init__(self, card):
         super().__init__()
-        self.action = MoveTo(getters.Zone(zones.Grave(),getters.Controller(card)),card)
+        self.action = MoveTo(getters.Zone(zones.Grave(),getters.Controller(card)),
+        lambda gs: gs.get(card))
 
     def choices(self,game_state):
         card = self.action.card(game_state)
@@ -201,6 +202,21 @@ class ActivatedAbility(Action):
             game_state = game_state.take_action(self.effect, effects_choice)
         return Event(self, game_state)
 
+    def __str__(self) -> str:
+        return str(self.cost) + ": " + str(self.effect)
+
+class Trigger:
+    def __init__(self, condition, action, source, uses_stack=True):
+        self.condition = condition
+        self.action = action
+        self.source = source
+        self.uses_stack = uses_stack
+
+    def do(self,game_state: GameState, event):
+        if self.uses_stack:
+            game_state.stack(StackAbility(game_state, self.action))
+        else:
+            self.action.perform(game_state)
 
 class CastSpell(Action):
     def __init__(self,card):
@@ -239,14 +255,14 @@ class PlayLand(Action):
         card = game_state.get(self.card)
         if not zones.Hand().contains(card):
             return []
-        if game_state.land_drops == 0:
+        if game_state.land_drops <= 0:
             return []
         else: 
             return [{}]
     
     def do(self, game_state):
-        game_state.land_drops -= 1
         game_state = game_state.take_action(Play(self.card), {})
+        game_state.land_drops -= 1
         return Event(self, game_state)
 
 class Search(Action):
