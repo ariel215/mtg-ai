@@ -52,15 +52,15 @@ def bfs(initial: GameState, condition, timeout=int(1e6)) -> SearchResult:
         next_state: GameState = next_node.game_state
         possible = actions.possible_actions(next_state)
         if not possible:
-            choice = end_turn.choices(next_state)[0]
-            child: GameState = next_state.take_action(end_turn, end_turn.choices(next_state)[0])
+            choice = end_turn.get_choices(next_state)[0]
+            child: GameState = next_state.take_action(end_turn, end_turn.get_choices(next_state)[0])
             if child not in seen:
                 new = HistoryNode(next_node, child, end_turn,choice)
                 queue.append(new)
             seen.add(child)
         else:
             for action in possible:
-                choices = action.choices(next_state)
+                choices = action.get_choices(next_state)
                 for choice in choices:
                     child = next_state.take_action(action, choice)
                     while child.in_zone(zones.Stack()):

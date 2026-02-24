@@ -1,5 +1,5 @@
 from collections import defaultdict
-from mtg_ai import game, actions, mana, zones
+from mtg_ai import game, actions, mana, zones, getters
 from typing import Iterable, Optional, TypeVar, Set, List, Callable
 from mtg_ai.mana import Mana
 
@@ -67,27 +67,11 @@ class Card(game.GameObject):
                                        static = self._static,
                                        activated=self._activated,
                                        keywords=self._keywords)
-    @property
-    def effect(self):
-        """
-        The full effect of resolving a spell, in addition to any card-specific effects.
-        Instants and sorceries go to the graveyard on resolution; all other
-        card types are put into play
-        """
-        if self.attrs.types & game.SPELL_TYPES:
-            dest_zone = zones.Grave(self.controller)
-        else:
-            dest_zone = zones.Field(self.controller)
-        dest = actions.MoveTo(dest_zone).bind(card=self)
-        if self._effect:
-            return self._effect + dest
-        else:
-            return dest
-
 
     def __init__(self,
                  name:str,
                  game_state: game.GameState,
+                 owner: zones.Player,
                  *,
                  cost: Optional[mana.Mana] = None,
                  types: Iterable[game.CardType]=(),
@@ -105,6 +89,7 @@ class Card(game.GameObject):
                  ):
 
         super().__init__(game_state)
+        self.owner = owner
         self._zone = zone  # private so setter can add/remove TemporaryEffects
         self.attrs = Card.CardAttributes(card=self,
                                          name=name,
@@ -118,7 +103,17 @@ class Card(game.GameObject):
                                          keywords=set(kw.lower() for kw in keywords))
         self.tapped = tapped
         self.counters = defaultdict(lambda: 0)
-        self._effect = effect
+
+        # The full effect of resolving a spell, in addition to any card-specific effects.
+        # Instants and sorceries go to the graveyard on resolution; all other
+        # card types are put into play
+        if self.attrs.types & game.SPELL_TYPES:
+            dest_zone = zones.Grave(owner=owner)
+        else:
+            dest_zone = zones.Field(owner=owner)
+        dest = actions.MoveTo(dest_zone).bind(card=self)
+        self.effect = effect + dest if effect is not None else dest
+
         if game_state is not None:
             for static in self.attrs.static:
                 static.on_move(self.game_state)
@@ -189,7 +184,7 @@ class Card(game.GameObject):
         choices that are made as a permanent enters the battlefield, such as shocklands
         and Cavern of Souls.
         """
-        self._effect = effect if self._effect is None else self._effect + effect
+        self.effect = effect if self.effect is None else self.effect + effect
 
     @property
     def controller(self):
@@ -204,10 +199,11 @@ class Card(game.GameObject):
     def copy(self, game_state: game.GameState):
         card = Card(name=self.attrs.name, # will be overwritten by attrs
                     game_state=game_state,
+                    owner=self.owner,
                     )
         card.attrs = self.attrs.copy(card)
         card.tapped = self.tapped
-        card._effect = self._effect
+        card.effect = self.effect
         card._zone = self._zone
         card.counters = defaultdict(lambda: 0, self.counters)
         # Don't need to sync the statics, because game_state.copy() will do that

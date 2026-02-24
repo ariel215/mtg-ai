@@ -12,7 +12,7 @@ def test_possible():
     possible = actions.possible_actions(gs)
     assert any(isinstance(action, actions.ActivatedAbility) for action in possible)
     assert len(possible) == 1
-    gs = gs.take_action(possible[0],possible[0].choices(gs)[0])
+    gs = gs.take_action(possible[0],possible[0].get_choices(gs)[0])
     assert gs.mana_pool.green == 1
 
 

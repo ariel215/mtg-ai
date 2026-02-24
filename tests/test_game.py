@@ -18,7 +18,7 @@ def test_forest():
     assert len(g0.objects) == 3
     assert len(g1.objects) == 3
     assert isinstance(g1.get(f1).zone, zones.Field)
-    choices = t_add_g.choices(g1)
+    choices = t_add_g.get_choices(g1)
     assert choices
     g2 = g1.take_action(t_add_g, choices[0])    
 
@@ -35,7 +35,7 @@ def test_cast():
     vt.zone = zones.Hand(0)
     f1.zone = zones.Field(0)
     f2.zone = zones.Field(0)
-    choices = f1.attrs.activated[0].choices(g0)[0]
+    choices = f1.attrs.activated[0].get_choices(g0)[0]
     g1 = g0.take_action(f1.attrs.activated[0],choices)
     g2 = g1.take_action(f2.attrs.activated[0],choices)
     cast_spell = actions.CastSpell(vt)
@@ -79,7 +79,7 @@ def test_battlement():
     b2 = decklist.Battlement(gs)
     b2.zone = zones.Field(0)
     ability = b1.attrs.activated[0]
-    choice = ability.choices(gs)[0]
+    choice = ability.get_choices(gs)[0]
     gs = gs.take_action(ability, choice)
     assert gs.mana_pool.green == 2
 
@@ -90,12 +90,12 @@ def test_saruli():
     omens.zone = zones.Field(0)
     saruli.zone = zones.Field(0)
     saruli_ability = saruli.attrs.activated[0]
-    choices = saruli_ability.choices(gs)
+    choices = saruli_ability.get_choices(gs)
     assert len(choices) == 1
     assert len(choices[0]['costs_choice']) == 1
     o2 = decklist.WallOfOmens(gs)
     o2.zone = zones.Field(0)
-    choices = saruli_ability.choices(gs)
+    choices = saruli_ability.get_choices(gs)
     assert len(choices) == 2
     choice = choices[0]
     gs = gs.take_action(saruli_ability,choice)
@@ -165,16 +165,17 @@ def test_coco():
     for i,card in enumerate(deck):
         card.zone = zones.Deck(0, i)
     g0.mana_pool += mana.Mana(green=4)
-    g1 = g0.take_action(
-        actions.CastSpell(coco),
-        {'mana': g0.mana_pool}
-    )
+    casting = actions.CastSpell(coco)
+    choice = casting.get_choices(g0)[0]
+    g1 = g0.take_action(casting, choice)
     assert isinstance(g1.get(coco).zone, zones.Stack)
     assert len(g1.in_zone(zones.Stack())) == 1
     g2 = g1.resolve_stack()
     field = g2.in_zone(zones.Field())
     assert len(field) == 2
     assert all(card.attrs.name == "Axebane Guardian" for card in field)
+    assert (len(g2.in_zone(zones.Grave())) == 1)
+    assert(len(g2.in_zone(zones.Grave(0))) == 1)
 
 def test_coco_etb():
     g0 = game.GameState([0])
@@ -209,7 +210,7 @@ def test_duskwatch():
     dw.zone = zones.Field(0)
     g0.mana_pool = mana.Mana(green=3)
     ability = dw.attrs.activated[0]
-    choice = next(iter(ability.choices(g0)))
+    choice = next(iter(ability.get_choices(g0)))
     g1 = g0.take_action(ability,choice)
     assert zones.Hand(0).contains(g1.get(deck[1]))
     assert len(g1.in_zone(zones.Deck(0))) == 2
@@ -223,7 +224,7 @@ def test_duskwatch_miss():
     dw.zone = zones.Field(0)
     g0.mana_pool = mana.Mana(green=3)
     ability = dw.attrs.activated[0]
-    choice = next(iter(ability.choices(g0)))
+    choice = next(iter(ability.get_choices(g0)))
     g1 = g0.take_action(ability,choice)
     assert len(g1.in_zone(zones.Deck(0))) == 3
 
@@ -251,19 +252,19 @@ def test_summoning_sickness():
     ability = b2.attrs.activated[0]
     gs = gs.take_action(actions.Play(card=b2),{})
     # should not be able to activate b2 the turn it comes into play
-    assert not ability.choices(gs)
+    assert not ability.get_choices(gs)
     gs = gs.take_action(actions.EndTurn(),{})
     # can activate it on subsequent turns
-    assert ability.choices(gs)
+    assert ability.get_choices(gs)
     # noncreatures don't have summoning sickness
     gs = gs.take_action(actions.Play(card=f1),{})
-    assert f1.attrs.activated[0].choices(gs)
+    assert f1.attrs.activated[0].get_choices(gs)
 
 def test_end_turn():
     gs = game.GameState([0])
     [forest] = decklist.build_deck([decklist.Forest],gs, 0)
     end_turn = actions.EndTurn() + actions.Draw(getters.ActivePlayer())
-    choices = end_turn.choices(gs)[0]
+    choices = end_turn.get_choices(gs)[0]
     gs = gs.take_action(end_turn, choices)
     assert zones.Hand().contains(gs.get(forest))
 
@@ -296,10 +297,51 @@ def test_fetch():
     fetch = decklist.WindsweptHeath(gs)
     fetch.zone = zones.Field(0)
     ability = fetch.attrs.activated[0]
-    choice = ability.choices(gs)[0]
+    choice = ability.get_choices(gs)[0]
     gs = gs.take_action(ability, choice)
     fetch = gs.get(fetch)
     assert zones.Grave(0).contains(fetch)
     field = gs.in_zone(zones.Field())
     assert len(field) == 1
     assert "forest" in field[0].attrs.subtypes
+
+def test_target():
+    g0 = game.GameState([0])
+    [saruli, steel, unsummon] = decklist.build_deck([decklist.Saruli, decklist.SteelWall, decklist.Unsummon], g0, 0)
+    saruli.zone = zones.Field(0)
+    steel.zone = zones.Field(0)
+    unsummon.zone = zones.Hand(0)
+    g0.mana_pool += mana.Mana(blue=1)
+    cast = actions.CastSpell(unsummon)
+    cast_choices = cast.get_choices(g0)
+
+    g_onstack = []
+    for choice in cast_choices:
+        g1 = g0.take_action(cast, choice)
+        g_onstack.append(g1)
+        assert(len(g1.in_zone(zones.Stack())) == 1)
+        assert(len(g1.get(unsummon).effect.get_choices(g1)) == 1)
+    assert(len(g_onstack) == 2)
+    # This test puts both versions of Unsummon on the stack at the same time before letting either
+    # resolve, to make sure that the two GameStates are not affecting each other.
+    bounced_names = set()
+    for g1 in g_onstack:
+        assert (len(g1.get(unsummon).effect.get_choices(g1)) == 1) # choices locked in
+        g2 = g1.resolve_stack()
+        bounced_names.add(g2.in_zone(zones.Hand())[0].attrs.name)
+        assert(len(g2.in_zone(zones.Stack())) == 0)
+        assert(len(g2.in_zone(zones.Field())) == 1)
+        assert(len(g2.in_zone(zones.Hand())) == 1)
+        assert(len(g2.in_zone(zones.Grave())) == 1)
+        # choices should no longer be locked in. If a second creature is in play again,
+        # Unsummon should be ready to target either one.
+        g2.in_zone(zones.Hand())[0].zone = zones.Field(0)
+        assert (len(g2.get(unsummon).effect.get_choices(g2)) == 2)
+
+    # confirm the affected card was different in the two branches
+    assert(bounced_names == {'Steel Wall', 'Saruli Caretaker'})
+    # make sure g0 is still unaffected by all this...
+    assert(len(g0.in_zone(zones.Stack())) == 0)
+    assert(len(g0.in_zone(zones.Field())) == 2)
+    assert(len(g0.in_zone(zones.Hand())) == 1)
+    assert(len(g0.in_zone(zones.Grave())) == 0)

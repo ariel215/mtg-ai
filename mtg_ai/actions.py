@@ -1,5 +1,6 @@
-from typing import List, TYPE_CHECKING
-from mtg_ai.game import GameState, Action, ChoiceSet, Event, StackAbility, CardType, StaticEffect
+from typing import List, TYPE_CHECKING, Callable
+from mtg_ai.game import GameState, Action, ChoiceSet, Event, StackAbility, CardType, StaticEffect, \
+    GameObject
 from mtg_ai import zones
 from mtg_ai.mana import Mana
 from itertools import product
@@ -21,7 +22,7 @@ def possible_actions(game_state: GameState) -> List[Action]:
     field_abilities = [ability for card in field for ability in card.attrs.activated]
     return list(
         filter(
-            lambda action: len(action.choices(game_state)) > 0, 
+            lambda action: len(action.get_choices(game_state)) > 0, 
             [PlayLand(card) if CardType.Land in card.attrs.types else CastSpell(card) for card in hand ] + field_abilities
         )
     )
@@ -91,14 +92,13 @@ class MoveTo(Action):
         zone = self.zone(game_state)
         if zone.position == zones.TOP:
             top = max(
-                card.zone.position
-                for card in game_state.objects
-                if hasattr(card,'zone')
+                [card.zone.position for card in game_state.objects if hasattr(card,'zone')],
+                default=0
             )
             zone.position = top + 1
         elif zone.position == zones.BOTTOM:
             in_zone = game_state.in_zone(type(zone)(zone.owner))
-            bottom = in_zone[0].zone.position
+            bottom = min([c.zone.position for c in in_zone if hasattr(c, "zone")], default=0)
             zone.position = bottom
             for card in in_zone:
                 card.zone.position += 1
@@ -188,8 +188,8 @@ class ActivatedAbility(Action):
         self.uses_stack = uses_stack
         
     def choices(self, game_state: GameState):
-        costs = self.cost.choices(game_state)
-        effects = self.effect.choices(game_state)
+        costs = self.cost.get_choices(game_state)
+        effects = self.effect.get_choices(game_state)
         return [{'costs_choice': c, 'effects_choice': e} for (c,e) in product(costs, effects)]
 
     def do(self, game_state: GameState, costs_choice, effects_choice):
@@ -215,14 +215,18 @@ class CastSpell(Action):
 
         if game_state.mana_pool.can_pay(card.attrs.cost):
             # todo: compute all the ways to pay given the mana available?
-            return [{'mana': card.attrs.cost}]
+            mana_choices = {'mana': card.attrs.cost}
+            effect_choices = card.effect.get_choices(game_state)
+            return [mana_choices | {"effect_choices":ch} for ch in effect_choices]
         else:
             return []
 
-    def do(self, game_state: GameState, mana: Mana):
+    def do(self, game_state: GameState, mana: Mana, effect_choices=None):
+        effect_choices = effect_choices or {}
         card = game_state.get(self.card)
         game_state.mana_pool -= mana
         game_state.stack(card)
+        card.effect.set_targets(game_state, **effect_choices)
         return Event(self,game_state,source=card,cause=card)
 
 class PlayLand(Action):
@@ -336,4 +340,49 @@ class EndTurn(Action):
         game_state.land_drops = 1
         game_state.active_player += 1
         game_state.active_player %= len(game_state.players)
-        
+
+
+class Target(Action, GameObject):
+    """
+    Target is an Action, a GameObject, and a Getter.
+    Action:     Call do() to lock in the choice of target and raises an Event.
+    GameObject: The "same" Target can be set to different values in different GameStates.
+    Getter:     call the Target to retrieve the chosen value
+    """
+    def __init__(self,
+                 game_state: GameState,
+                 criteria: GameObject | Callable[[GameObject], bool],
+                 search_zone: zones.Zone):
+        GameObject.__init__(self, game_state)
+        Action.__init__(self)
+        self.criteria = criteria
+        self.search_zone = search_zone
+
+    def __call__(self, game_state: GameState):
+        obj = game_state.get(self)
+        return obj.params["target"]
+
+    def choices(self, game_state):
+        valid_targets = filter(self.criteria, game_state.in_zone(self.search_zone))
+        return [{"target":obj} for obj in valid_targets]
+
+    def do(self, game_state: GameState, target):
+        self.set(target)
+        return Event(self, game_state)
+
+    def set(self, target: GameObject):
+        self.bind(target=target)
+
+    def unset(self):
+        self.params.pop("target", None)
+
+    @property
+    def is_set(self) -> bool:
+        return "target" in self.params
+
+    def copy(self, game_state: GameState):
+        target = Target(game_state=game_state,
+                        criteria=self.criteria,
+                        search_zone=self.search_zone)
+        target.params = self.params.copy()
+        return target

@@ -1,11 +1,12 @@
 from enum import Enum
 from itertools import chain, product
-from typing import TypeVar, Optional, List, Dict, Any, TYPE_CHECKING, Set, Callable
+from typing import TypeVar, Optional, List, Dict, Any, TYPE_CHECKING, Set, Callable, Tuple
 from . import zones
 from .mana import Mana
+from . import getters
 
 if TYPE_CHECKING:
-    from actions import Trigger
+    from actions import Trigger, Target
     from cards import Card
 
 Player = int
@@ -32,7 +33,7 @@ class GameState:
         self.players = players
         self.mana_pool = mana_pool or Mana()
         self.turn_number = turn_number
-        self.triggers = [] #: triggers waiting to go onto the stack
+        self.triggers: List[Tuple[Event, 'TriggeredEffect']] = [] #: triggers waiting to go onto the stack
         self.summoning_sick: Set[int] = set() #: summoning sick cards
         self.land_drops = 1 #: the number of lands that can still be played this turn
         self.active_player = 0
@@ -58,14 +59,17 @@ class GameState:
         return sorted([c for c in self.objects if zone.contains(c)],
         key=lambda card: card.zone.position or float('-inf'))
 
-    def get(self, obj: GenericGameObject) -> GenericGameObject:
-        return self.objects[obj.uid]
+    def get(self, obj: GenericGameObject | getters.Getter) -> GenericGameObject:
+        try:
+            return self.objects[obj.uid]
+        except AttributeError:
+            return self.objects[obj(self).uid]
 
     def stack(self, card):
         """
         Place a card on top of the stack
         """
-        owner = card.zone.owner if card.zone else None
+        owner = card.zone.owner if card.zone else card.owner if hasattr(card, "owner") else None
         stack = self.in_zone(zones.Stack())
         if stack:
             top = max(obj.zone.position for obj in stack)
@@ -79,9 +83,11 @@ class GameState:
         """
         stack = self.in_zone(zones.Stack())
         top = stack.pop()
-        choices = top.effect.choices(self)
+        chosen = top.effect.get_choices(self)
 
-        new_state = self.take_action(top.effect, choices[0])
+        new_state = self.take_action(top.effect, chosen[0])
+
+        top.effect.unset_targets(new_state)
         return new_state
 
     def take_action(self, action: 'Action', choices: Dict[str, Any] | None = None, copy:bool=True)->'GameState':
@@ -179,7 +185,8 @@ class Action:
     """
 
     def __init__(self):
-         self.params = {}
+        self.params = {}
+        self.targets: List['Target'] = []
  
     def bind(self, **kwargs):
          self.params |= kwargs
@@ -188,36 +195,67 @@ class Action:
     def choices[T](self,game_state) -> ChoiceSet[T]:
         """
         The possible choices that can be made for this action.
-        For example: If a player has to sacrifice a creature, 
+        For example: If a player has to sacrifice a creature,
         the choices are the creatures that player controls.
 
-        Each element of the ChoiceList should be a dictionary whose 
+        Each element of the ChoiceList should be a dictionary whose
         keys are the same as the keyword arguments to `do()`.
         """
         raise NotImplementedError()
  
-    def choose(self, game_state):
-         # cls.choices() should not let you choose anything set in self.params
-         choices =self.choices(game_state)
-         return [
-             {c: choice[c] for c in choice.keys() - self.params.keys()}
-             for choice in choices 
-         ]
+    def get_choices[T](self, game_state)->ChoiceSet[T]:
+        """
+        The possible choices that can be made for this action at this point in time.
+
+        If this action has no targets, this is the same as self.choices.
+        If this action has targets and those targets have not been set, 
+            this returns the posssible things this can target.
+        If this action has targets and the targets have been set, 
+            this returns the non-targeted choices that can still be made.
+        
+        External callers should use this rather than call `Action.choices` directly
+        
+        """
+
+        targets: List['Target'] = [game_state.get(t) for t in self.targets]
+        not_yet_set: List['Target'] = [t for t in targets if not t.is_set]
+        if not_yet_set:
+            target_choices = [target.choices(game_state) for target in not_yet_set]
+            combinations = list(product(*target_choices))
+            return [{'targets': tgtlist} for tgtlist in combinations]
+        else:
+            # cls.choices() should not let you choose anything set in self.params
+            choices: ChoiceSet[T] = self.choices(game_state)
+            return [{c: choice[c] for c in choice.keys() - self.params.keys()}
+                    for choice in choices]
+
  
     def perform(self, game_state, **kwargs) -> Event:
-
         if event := self.do(game_state, **(kwargs | self.params)):
             return event
         return Event(self, game_state)
  
     def do[T](self, game_state, **kwargs: Choice[T]) -> Event:
         """
-        Make the necessary changes to the game state. 
-        Each action should have all the information 
+        Make the necessary changes to the game state.
+        Each action should have all the information
         needed to make its constituent changes.
         """
         raise NotImplementedError()
-    
+
+    def register_target(self, target: 'Target'):
+        self.targets.append(target)
+
+    def set_targets(self, game_state, *, targets=None, **_kwargs):
+        if targets: 
+            locals = [game_state.get(target) for target in self.targets]
+            for (local, value) in zip(locals, targets):
+                local.set(value['target'])
+
+    def unset_targets(self, game_state):
+        for target in self.targets:
+            game_state.get(target).unset()
+
     def __add__(self, other: 'Action') -> 'And':
         return And(self, other)
 
@@ -228,7 +266,7 @@ class And(Action):
         self.actions: List[Action] = list(actions)
 
     def choices(self,game_state):
-        subchoices = [action.choices(game_state) for action in self.actions]
+        subchoices = [action.get_choices(game_state) for action in self.actions]
         combinations = list(product(*subchoices))
         return [{'choices': option }
         for option in combinations]
@@ -239,6 +277,16 @@ class And(Action):
         for action, choice in zip(self.actions, choices):
             game_state = game_state.take_action(action, choice)
         return Event(self, game_state)
+
+    def set_targets(self, game_state, *, choices=None, **kwargs):
+        if choices is None:
+            choices = ({} for _ in self.actions)
+        for action, choice in zip(self.actions, choices):
+            action.set_targets(game_state, **choice)
+
+    def unset_targets(self, game_state):
+        for action in self.actions:
+            action.unset_targets(game_state)
 
     def __add__(self, other: Action):
         new_action = And(*self.actions)
