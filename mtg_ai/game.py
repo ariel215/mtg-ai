@@ -83,7 +83,7 @@ class GameState:
         """
         stack = self.in_zone(zones.Stack())
         top = stack.pop()
-        chosen = top.effect.choose(self)
+        chosen = top.effect.get_choices(self)
 
         new_state = self.take_action(top.effect, chosen[0])
 
@@ -203,25 +203,32 @@ class Action:
         """
         raise NotImplementedError()
  
-    def choose(self, game_state):
-        targets = [game_state.get(t) for t in self.targets]
-        non_yet_set = [t for t in targets if not t.is_set]
-        if len(non_yet_set) == 0:
+    def get_choices[T](self, game_state)->ChoiceSet[T]:
+        """
+        The possible choices that can be made for this action at this point in time.
+
+        If this action has no targets, this is the same as self.choices.
+        If this action has targets and those targets have not been set, 
+            this returns the posssible things this can target.
+        If this action has targets and the targets have been set, 
+            this returns the non-targeted choices that can still be made.
+        
+        External callers should use this rather than call `Action.choices` directly
+        
+        """
+
+        targets: List['Target'] = [game_state.get(t) for t in self.targets]
+        not_yet_set: List['Target'] = [t for t in targets if not t.is_set]
+        if not_yet_set:
+            target_choices = [target.choices(game_state) for target in not_yet_set]
+            combinations = list(product(*target_choices))
+            return [{'targets': tgtlist} for tgtlist in combinations]
+        else:
             # cls.choices() should not let you choose anything set in self.params
-            choices = self.choices(game_state)
+            choices: ChoiceSet[T] = self.choices(game_state)
             return [{c: choice[c] for c in choice.keys() - self.params.keys()}
                     for choice in choices]
-        else:
-            chosen = []
-            target = non_yet_set[0] # recursion will handle everything after the first
-            for option in target.choices(game_state):
-                # temporarily set this Target to this option, for recursion
-                target.set(option["target"])
-                for choice in self.choose(game_state): # recurse
-                    chosen.append(option | {"chosen": choice})
-            # unset now that recursion is done
-            target.unset()
-            return chosen
+
  
     def perform(self, game_state, **kwargs) -> Event:
         if event := self.do(game_state, **(kwargs | self.params)):
@@ -239,15 +246,11 @@ class Action:
     def register_target(self, target: 'Target'):
         self.targets.append(target)
 
-    def set_targets(self, game_state, *, target=None, chosen: Dict=None, **kwargs):
-        i = 0
-        while i < len(self.targets) and target is not None and chosen is not None:
-            local = game_state.get(self.targets[i])
-            if not local.is_set:
-                game_state.take_action(local, {"target": target})
-                target = chosen.get("target", None)
-                chosen = chosen.get("chosen", None)
-            i += 1
+    def set_targets(self, game_state, *, targets=None, **_kwargs):
+        if targets: 
+            locals = [game_state.get(target) for target in self.targets]
+            for (local, value) in zip(locals, targets):
+                local.set(value['target'])
 
     def unset_targets(self, game_state):
         for target in self.targets:
@@ -263,7 +266,7 @@ class And(Action):
         self.actions: List[Action] = list(actions)
 
     def choices(self,game_state):
-        subchoices = [action.choose(game_state) for action in self.actions]
+        subchoices = [action.get_choices(game_state) for action in self.actions]
         combinations = list(product(*subchoices))
         return [{'choices': option }
         for option in combinations]

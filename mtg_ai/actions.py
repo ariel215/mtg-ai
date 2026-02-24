@@ -22,7 +22,7 @@ def possible_actions(game_state: GameState) -> List[Action]:
     field_abilities = [ability for card in field for ability in card.attrs.activated]
     return list(
         filter(
-            lambda action: len(action.choices(game_state)) > 0, 
+            lambda action: len(action.get_choices(game_state)) > 0, 
             [PlayLand(card) if CardType.Land in card.attrs.types else CastSpell(card) for card in hand ] + field_abilities
         )
     )
@@ -188,8 +188,8 @@ class ActivatedAbility(Action):
         self.uses_stack = uses_stack
         
     def choices(self, game_state: GameState):
-        costs = self.cost.choose(game_state)
-        effects = self.effect.choose(game_state)
+        costs = self.cost.get_choices(game_state)
+        effects = self.effect.get_choices(game_state)
         return [{'costs_choice': c, 'effects_choice': e} for (c,e) in product(costs, effects)]
 
     def do(self, game_state: GameState, costs_choice, effects_choice):
@@ -216,7 +216,7 @@ class CastSpell(Action):
         if game_state.mana_pool.can_pay(card.attrs.cost):
             # todo: compute all the ways to pay given the mana available?
             mana_choices = {'mana': card.attrs.cost}
-            effect_choices = card.effect.choices(game_state)
+            effect_choices = card.effect.get_choices(game_state)
             return [mana_choices | {"effect_choices":ch} for ch in effect_choices]
         else:
             return []
