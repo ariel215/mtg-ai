@@ -16,3 +16,8 @@ include = ["mtg_ai*"]
 dev = [
     "pytest>=8.4.2",
 ]
+
+[pytest]
+markers = [
+    "slow"
+]

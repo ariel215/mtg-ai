@@ -234,6 +234,9 @@ class CastSpell(Action):
         if not isinstance(card_zone, zones.Hand):
             return []
 
+        if CardType.Instant not in card.attrs.types and len(game_state.in_zone(zones.Stack())) > 0:
+            return []
+
         if game_state.mana_pool.can_pay(card.attrs.cost):
             # todo: compute all the ways to pay given the mana available?
             mana_choices = {'mana': card.attrs.cost}

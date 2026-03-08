@@ -1,3 +1,4 @@
+import pytest
 from mtg_ai.game import HashKind
 from mtg_ai import actions, decklist, game, search, zones
 
@@ -54,6 +55,7 @@ def test_play():
     result = search.bfs(gs, condition, 100)
     assert result is not None
 
+@pytest.mark.long
 def test_search():
     gs = game.GameState([0])
     decklist.build_deck(
@@ -66,9 +68,14 @@ def test_search():
 
     def condition(game_state):
         return game_state.mana_pool.green == 8
-    result = search.bfs(gs, condition,timeout=5000)
+    result = search.bfs(gs, condition,timeout=10000)
+    final = result.remaining[-1]
+    print(final.game_state.in_zone(zones.Field()))
+    assert final.game_state.turn_number == 4
+
     assert result.final_state is not None
 
+@pytest.mark.long
 def test_wincon():
     gs = game.GameState([0])
     (hand,deck) = decklist.build_deck(
