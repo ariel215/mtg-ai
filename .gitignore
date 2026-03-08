@@ -12,3 +12,9 @@ wheels/
 
 # logs
 *.log
+.notes/
+
+
+# other tools
+.claude/
+.vscode/
