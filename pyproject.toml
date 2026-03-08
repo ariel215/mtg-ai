@@ -19,5 +19,5 @@ dev = [
 
 [pytest]
 markers = [
-    "slow"
+    "long"
 ]
