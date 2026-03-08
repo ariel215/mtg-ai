@@ -1,4 +1,3 @@
-from turtle import pos
 from mtg_ai.game import HashKind
 from mtg_ai import actions, decklist, game, search, zones
 
