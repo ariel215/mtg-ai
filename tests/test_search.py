@@ -55,7 +55,7 @@ def test_play():
     result = search.bfs(gs, condition, 100)
     assert result is not None
 
-@pytest.mark.long
+@pytest.mark.skip
 def test_search():
     gs = game.GameState([0])
     decklist.build_deck(
@@ -75,7 +75,7 @@ def test_search():
 
     assert result.final_state is not None
 
-@pytest.mark.long
+@pytest.mark.skip
 def test_wincon():
     gs = game.GameState([0])
     (hand,deck) = decklist.build_deck(

@@ -25,6 +25,7 @@ class HistoryNode:
     action: Action | None = None
     choice: Any | None = None
     stats: MCTSInfo | None = None
+    children: List['HistoryNode'] = field(default_factory=list)
 
 @dataclass
 class SearchResult:
@@ -104,14 +105,17 @@ class MCTSSearcher:
         Produce a list of children of the current game state, labelled by the action taken 
         and the choices made for that action. 
         """
-        state = node.game_state
-        possible = actions.possible_actions(state) or [END_TURN]
-        choices = [
-            (action,choice) for action in possible for choice in action.choices(state)]
-        children = [state.take_action(action,choice) for (action,choice) in choices]
-        return [HistoryNode(child,node, action, choice)
-            for (child,(action,choice)) in zip(children, choices)
-        ]
+        if len(node.children) == 0:
+            state = node.game_state
+            possible = actions.possible_actions(state) or [END_TURN]
+            choices = [
+                (action,choice) for action in possible for choice in action.choices(state)]
+            children = [state.take_action(action,choice) for (action,choice) in choices]
+            node.children = [HistoryNode(child,node, action, choice)
+                for (child,(action,choice)) in zip(children, choices)
+            ]
+        return node.children
+        
 
     def score(self, node: HistoryNode) -> float:
         info = node.stats
@@ -130,9 +134,9 @@ class MCTSSearcher:
                 logger.debug(f"Found victory by turn {current.turn_number}")
                 return 1.0 / current.turn_number ** 2
             possible = actions.possible_actions(current) or [END_TURN]
-            choices = [(action,choice) for action in possible for choice in action.choices(current)]
-            (action,choice) = random.choice(choices)
-            logger.debug(f"Taking {action} with choices {str(choices)}")
+            action = random.choice(possible)
+            choice = random.choice(action.choices(current))
+            logger.debug(f"Taking {action} with choices {str(choice)}")
             current = current.take_action(action, choice).resolve_stack()
         # failed to find the desired game state soon enough; count this as a failure
         logger.debug(f"failed to find victory before turn {max_turns}")

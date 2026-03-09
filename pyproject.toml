@@ -15,4 +15,5 @@ include = ["mtg_ai*"]
 [dependency-groups]
 dev = [
     "pytest>=8.4.2",
+    "snakeviz>=2.2.2",
 ]

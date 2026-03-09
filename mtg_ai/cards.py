@@ -3,12 +3,32 @@ from mtg_ai import game, actions, mana, zones, getters
 from typing import Iterable, Optional, TypeVar, Set, List, Callable
 from mtg_ai.mana import Mana
 
+
+class Attribute[T]:
+    
+    def __set_name__(self, owner: 'Card.CardAttributes', name:str):
+        self.private_name = "_" + name
+        self.name = name
+    def __set__(self, owner: 'Card.CardAttributes', value: T):
+        setattr(owner, self.private_name,value)
+    def __get__(self, owner: 'Card.CardAttributes', objname) -> T:
+        base = getattr(owner, self.private_name)
+        if base is None:
+            return None
+        card = owner.card
+        for effect in card.game_state.active_statics:
+            if effect.matches(self.name, card):
+                # TODO: if condition cares about this properly, we will get an infinite loop
+                base = effect.modification(card.game_state, base)
+        return base
+
+
 class Card(game.GameObject):
     """
     Representation of a card.
 
     Attributes:
-        name: the card's name
+        name: -> T the card's name
         cost: the amount of mana required to cast this card, if it is a spell.
         types: this card's card types
         subtypes: this card's subtypes
@@ -21,40 +41,37 @@ class Card(game.GameObject):
 
     cards = {}
 
+            
+
     class CardAttributes:
+        name = Attribute()
+        cost = Attribute()
+        types = Attribute()
+        subtypes = Attribute()
+        power = Attribute()
+        toughness = Attribute()
+        static = Attribute()
+        activated = Attribute()
+        keywords = Attribute()
+        
         def __init__(self, card, name, cost, types, subtypes, *,
                      power: Optional[int] = None,
                      toughness: Optional[int] = None,
                      static: List[game.StaticAbility] = None,
                      activated: List[actions.ActivatedAbility] = None,
                      keywords: Iterable[str] = None):
-            self._name: str = name
-            self._cost: Mana = cost
-            self._types: Set[game.CardType] = set(types)
-            self._subtypes: Set[str] = set(subtypes)
-            self._power: int | None = power
-            self._toughness: int | None = toughness
-            self._static: List[game.StaticAbility] = static or []
-            self._activated: List[actions.ActivatedAbility] = activated or []
-            self._keywords = keywords or []
-            self._card = card
 
-        def __setattr__(self, key, value):
-            if hasattr(self, "_" + key):
-                super().__setattr__("_" + key, value)
-            else:
-                super().__setattr__(key, value)
+            self.name: str = name
+            self.cost: Mana = cost
+            self.types: Set[game.CardType] = set(types)
+            self.subtypes: Set[str] = set(subtypes)
+            self.power: int | None = power
+            self.toughness: int | None = toughness
+            self.static: List[game.StaticAbility] = static or []
+            self.activated: List[actions.ActivatedAbility] = activated or []
+            self.keywords = keywords or []
+            self.card = card
 
-        def __getattr__(self, attribute_name):
-            base = self.__getattribute__("_" + attribute_name)
-            if base is None:
-                return None
-            card = self._card
-            for effect in card.game_state.active_statics:
-                if effect.matches(attribute_name, card):
-                    # TODO: if condition cares about this properly, we will get an infinite loop
-                    base = effect.modification(card.game_state, base)
-            return base
 
         def copy(self, new_card):
             return Card.CardAttributes(card=new_card,
