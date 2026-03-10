@@ -95,24 +95,28 @@ class MoveTo(Action):
     def do(self, game_state,card):
         zone = self.zone(game_state)
         if zone.position == zones.TOP:
+            in_zone = game_state.in_zone(type(zone)(zone.owner))
             top = max(
-                [card.zone.position for card in game_state.objects if hasattr(card,'zone')],
+                [c.zone.position for c in in_zone],
                 default=0
             )
-            zone.position = top + 1
+            position = top + 1
         elif zone.position == zones.BOTTOM:
             in_zone = game_state.in_zone(type(zone)(zone.owner))
-            bottom = min([c.zone.position for c in in_zone if hasattr(c, "zone")], default=0)
-            zone.position = bottom
-            for card in in_zone:
-                card.zone.position += 1
+            position = min([c.zone.position for c in in_zone if hasattr(c, "zone")], default=0)
+            
+            for other in in_zone:
+                other = game_state.get(other)
+                old_zone = other.zone
+                other.zone = type(old_zone)(old_zone.owner, old_zone.position + 1)
 
         else:
             # position should not matter in this case
             assert zone.position is None
-            
+            position = zone.position
+             
         card = game_state.get(card)
-        card.zone = zone
+        card.zone = type(zone)(owner=zone.owner, position=position)
 
 
 class Sacrifice(Action):
