@@ -28,8 +28,7 @@ class CardState:
             counters=defaultdict(lambda: 0, self.counters),
         )
         return new
-
-
+ 
 class CardAttributes:
     """
     Immutable card definition — the flyweight.
@@ -74,39 +73,16 @@ class _CardAttrsProxy:
         self._def = card_def
         self._card = card
 
-    @property
-    def name(self): return self._def._name
-    @property
-    def cost(self): return self._def._cost
-    @property
-    def types(self): return self._def._types
-    @property
-    def subtypes(self): return self._def._subtypes
-    @property
-    def keywords(self): return self._def._keywords
-    @property
-    def static(self): return self._def._static
-    @property
-    def activated(self): return self._def._activated
-
-    @property
-    def power(self):
-        base = self._def._power
+    def __getattribute__(self,name):
+        def_ = object.__getattribute__(self,'_def') # self._def
+        card = object.__getattribute__(self, '_card') # self._card
+        base = object.__getattribute__(def_, '_' + name)
+        
         if base is None:
             return None
-        for effect in self._card.game_state.active_statics:
-            if effect.matches('power', self._card):
-                base = effect.modification(self._card.game_state, base)
-        return base
-
-    @property
-    def toughness(self):
-        base = self._def._toughness
-        if base is None:
-            return None
-        for effect in self._card.game_state.active_statics:
-            if effect.matches('toughness', self._card):
-                base = effect.modification(self._card.game_state, base)
+        for effect in card.game_state.active_statics:
+            if effect.matches(name,card):
+                base = effect.modification(card.game_state, base)
         return base
 
 
