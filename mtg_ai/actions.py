@@ -55,8 +55,8 @@ class Draw(Action):
         deck = game_state.in_zone(zones.Deck(owner=player))
         if not deck:
             return None # todo: game loss
-        
-        card = deck.pop()
+
+        card = game_state.get(deck.pop())
         card.zone = zones.Hand(owner=player)
         return Event(self,game_state,card,None)
 
@@ -375,7 +375,7 @@ class EndTurn(Action):
     def do(self,game_state: GameState):
         game_state.mana_pool = Mana()
         for card in game_state.in_zone(zones.Field()):
-            card.tapped = False
+            game_state.get(card).tapped = False
         game_state.summoning_sick.clear()
         game_state.turn_number += 1
         game_state.land_drops = 1
