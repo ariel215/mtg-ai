@@ -15,7 +15,49 @@ GenericGameObject = TypeVar('GenericGameObject', bound='GameObject')
 
 class HashKind(Enum):
     FULL = 0
-    VISIBLE = 1    
+    VISIBLE = 1
+
+
+def canonical_key(gs: 'GameState') -> tuple:
+    """
+    Return a deterministic, UID-independent, hashable tuple that uniquely
+    identifies the logical game state.
+
+    Suitable as a transposition-table key across processes: contains only
+    plain Python primitives (str, int, bool, tuple), so it serialises with
+    plain pickle and can be compared for equality across independently started
+    Python interpreters.
+
+    Design notes:
+    - Card identity uses the class name, not the UID (UIDs are process-local).
+    - None zone fields (owner / position for unordered zones) are normalised
+      to -1 so tuple comparison never mixes None with int.
+    - Counters with a count of 0 are omitted (defaultdict artefacts).
+    - All per-object tuples are sorted, making the key independent of the
+      order in which cards were created or inserted into gs.objects.  This is
+      correct for unordered zones (Field, Hand, Grave) and still distinguishes
+      ordered zones (Deck, Stack) because their position values differ.
+    """
+    m = gs.mana_pool
+    mana_key = (m.white, m.blue, m.black, m.red, m.green,
+                m.gold, m.colorless, m.generic)
+
+    def obj_key(obj):
+        zone = obj.zone
+        zone_class = type(zone).__name__ if zone is not None else ''
+        zone_owner = -1 if (zone is None or zone.owner is None) else zone.owner
+        zone_pos   = -1 if (zone is None or zone.position is None) else zone.position
+        tapped     = getattr(obj, 'tapped', False)
+        sick       = obj in gs.summoning_sick
+        counters   = tuple(sorted(
+            (k, v) for k, v in getattr(obj, 'counters', {}).items() if v != 0
+        ))
+        return (type(obj).__name__, zone_class, zone_owner, zone_pos,
+                tapped, sick, counters)
+
+    objects_key = tuple(sorted(obj_key(obj) for obj in gs.objects))
+    return (gs.turn_number, gs.land_drops, gs.active_player, mana_key, objects_key)
+
 
 class GameState:
     """

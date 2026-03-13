@@ -85,23 +85,6 @@ def test_independently_constructed_equal_states():
     assert canonical_key(g1) == canonical_key(g2)
 
 
-def test_uid_independent():
-    """
-    Extra objects created and discarded before building the real state must
-    not change the key — UIDs are process-local implementation details.
-    """
-    g1 = game.GameState([0])
-    _discarded = decklist.Forest(g1)   # burns a UID
-    f = decklist.Forest(g1)
-    f.zone = zones.Field(0)
-
-    g2 = game.GameState([0])
-    f2 = decklist.Forest(g2)          # gets UID 0, not UID 1
-    f2.zone = zones.Field(0)
-
-    assert canonical_key(g1) == canonical_key(g2)
-
-
 # ---------------------------------------------------------------------------
 # Sensitivity: different logical states → different keys
 # ---------------------------------------------------------------------------
@@ -165,7 +148,7 @@ def test_summoning_sick_vs_not():
     """
     g1, _ = fresh_state((decklist.Battlement, zones.Field(0)))
     [b] = g1.objects
-    g1.summoning_sick.add(b.uid)
+    g1.summoning_sick.add(b)  # summoning_sick stores Card objects, not UIDs
 
     g2, _ = fresh_state((decklist.Battlement, zones.Field(0)))
     # summoning_sick is empty in g2
@@ -222,6 +205,40 @@ def test_same_state_via_copy():
     g_copy = gs_copy.take_action(act_copy, act_copy.get_choices(gs_copy)[0])
 
     assert canonical_key(g_original) == canonical_key(g_copy)
+
+
+def test_card_order_in_field_irrelevant():
+    """
+    Battlefield is unordered. Two states that differ only in which UID was
+    assigned to which permanent should compare equal.
+    """
+    g1 = game.GameState([0])
+    decklist.Forest(g1).zone = zones.Field(0)
+    decklist.WallOfOmens(g1).zone = zones.Field(0)
+
+    g2 = game.GameState([0])
+    # Reversed construction order → different UIDs for the same logical state
+    decklist.WallOfOmens(g2).zone = zones.Field(0)
+    decklist.Forest(g2).zone = zones.Field(0)
+
+    assert canonical_key(g1) == canonical_key(g2)
+
+
+def test_card_order_in_graveyard_irrelevant():
+    """
+    Graveyard is unordered for purposes of game-state identity. Two states
+    that differ only in which UID was assigned to which card in the graveyard
+    should compare equal.
+    """
+    g1 = game.GameState([0])
+    decklist.Forest(g1).zone = zones.Grave(0)
+    decklist.WallOfOmens(g1).zone = zones.Grave(0)
+
+    g2 = game.GameState([0])
+    decklist.WallOfOmens(g2).zone = zones.Grave(0)
+    decklist.Forest(g2).zone = zones.Grave(0)
+
+    assert canonical_key(g1) == canonical_key(g2)
 
 
 def test_card_order_in_hand_irrelevant():
