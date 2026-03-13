@@ -7,7 +7,7 @@ import collections
 from dataclasses import dataclass,field
 from typing import List, Any, Self, Dict, Callable, Tuple, Optional, TypeVar
 from mtg_ai import actions, decklist, getters, zones
-from mtg_ai.game import GameState, Action
+from mtg_ai.game import GameState, Action, canonical_key
 import logging
 
 logger = logging.getLogger(__name__, )
@@ -26,6 +26,32 @@ class HistoryNode:
     choice: Any | None = None
     stats: MCTSInfo | None = None
     children: List['HistoryNode'] = field(default_factory=list)
+
+
+    def expand(self) -> List['HistoryNode']:
+        """
+        Produce a list of children of the current game state, labelled by the action taken 
+        and the choices made for that action. 
+        """
+        if len(self.children) == 0:
+            state = self.game_state
+            possible = actions.possible_actions(state) or [END_TURN]
+            choices = [
+                (action,choice) for action in possible for choice in action.choices(state)]
+            children = [state.take_action(action,choice) for (action,choice) in choices]
+            self.children = [HistoryNode(child,self, action, choice)
+                for (child,(action,choice)) in zip(children, choices)
+            ]
+        return self.children
+
+
+    def to_record(self):
+        if self.stats is None:
+            stats = None
+        else:
+            stats = {'value': self.stats.value, 'visits': self.stats.visits}
+        gs = canonical_key(self.game_state)
+        return {'game_state': gs, 'stats': stats}
 
 @dataclass
 class SearchResult:
@@ -98,23 +124,6 @@ class MCTSSearcher:
         self.C = C
         self.max_turns = max_turns
         self.n_iters = n_iters
-
-
-    def expand(self, node: HistoryNode) -> List[HistoryNode]:
-        """
-        Produce a list of children of the current game state, labelled by the action taken 
-        and the choices made for that action. 
-        """
-        if len(node.children) == 0:
-            state = node.game_state
-            possible = actions.possible_actions(state) or [END_TURN]
-            choices = [
-                (action,choice) for action in possible for choice in action.choices(state)]
-            children = [state.take_action(action,choice) for (action,choice) in choices]
-            node.children = [HistoryNode(child,node, action, choice)
-                for (child,(action,choice)) in zip(children, choices)
-            ]
-        return node.children
         
 
     def score(self, node: HistoryNode) -> float:
@@ -157,7 +166,7 @@ class MCTSSearcher:
             if current.game_state.turn_number > self.max_turns:
                 value = 0
                 break
-            children = self.expand(current)
+            children = current.expand()
             unexplored = [child for child in children if child.stats is not None]
             if unexplored:
                 current = random.choice(children)
@@ -179,8 +188,7 @@ class MCTSSearcher:
         """
         Run an iteration of MCTS to compute the best next move.
         """
-        children = self.expand(self.root)
-
+        children = self.root.expand()
         for i,child in enumerate(children):
             updated = self.explore_node(child)
         assert all(child.stats is not None for child in children)
@@ -206,14 +214,26 @@ class MCTSSearcher:
         visited the most times. Exception: we always prefer not ending the turn
         to ending the turn.
         """
-        children = self.expand(self.root)
+        children = self.root.expand()
         logger.debug("children: %s", children)
         if len(children) == 1:
             return children[0]
         new_children = self.explore()
         assert len(children) == len(new_children)
+        assert new_children == children
         nvisits = [(child,child.stats.visits) for child in new_children]
         if len(nvisits) > 1:
             nvisits = [pair for pair in nvisits if pair[0].game_state is not END_TURN]
         return max(nvisits, key=lambda p: p[1])[0]
 
+    
+    @property
+    def records(self):
+        records = []
+        nodes = [self.root]
+        while len(nodes) > 0:
+            current = nodes.pop()
+            records.append(current.to_record())
+            nodes.extend(current.children)
+        return records
+    

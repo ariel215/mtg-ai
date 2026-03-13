@@ -28,7 +28,7 @@ def test_possible_fetch():
     assert len(possible) == 1
     assert fetch.attrs.activated[0] in possible
     searcher = search.MCTSSearcher(gs,{},lambda _: True, 0.1)
-    children = searcher.expand(searcher.root)
+    children = searcher.root.expand()
     assert len(children) == 1
     assert children[0].action == fetch.attrs.activated[0]
     new_forest = children[0].game_state.get(forest)

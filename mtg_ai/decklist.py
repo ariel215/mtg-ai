@@ -169,6 +169,27 @@ class WallOfOmens(Card):
             action=actions.Draw(getters.Controller(self))
         )
 
+class WallOfBlossoms(Card):
+    def __init__(self, game_state, owner=None):
+        super().__init__(
+            name="Wall of Blossoms",
+            types=(CardType.Creature,),
+            subtypes=("wall",),
+            cost = mana.Mana(green=1, generic=1),
+            game_state=game_state,
+            power=0,
+            toughness=4,
+            keywords=["defender"],
+            owner = owner or 0
+        )
+
+        self.triggered(
+            when=actions.Play,
+            condition=lambda ev: ev.source.uid == self.uid,
+            action=actions.Draw(getters.Controller(self))
+        )
+
+
 class Battlement(Card):
     def __init__(self, game_state, owner=None):
         super().__init__(
