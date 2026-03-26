@@ -16,8 +16,7 @@ Deck:
 1 Staff of Domination
 
 Final Turn:
-0
-
+1
 
 ## Scenario 2
 
@@ -35,7 +34,7 @@ Deck:
 1 Staff of Domination
 
 Final Turn:
-0
+1
 
 ## Scenario 3
 
@@ -52,10 +51,11 @@ Deck:
 2 Forest
 1 Staff of Domination
 
-Final Turn
-1
+Final Turn:
+2
 
 ## Scenario 4
+
 Field:
 
 Hand:
@@ -65,14 +65,12 @@ Hand:
 2 Temple Garden
 
 Deck:
-1 Forest 
+1 Forest
 1 Sylvan Caryatid
 1 Arcades the Strategist
 1 Forest
 1 Staff of Domination
 1 Forest
 
-
 Final Turn:
 4
-

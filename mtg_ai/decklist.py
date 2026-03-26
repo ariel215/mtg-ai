@@ -1,3 +1,4 @@
+from typing import Tuple, List
 import random
 from mtg_ai import actions, game, getters, zones, mana
 from mtg_ai.cards import Card
@@ -443,7 +444,7 @@ class Kaysa(Card):
                      modification=lambda gs, x: x + 1)
 
  
-def build_deck(game_state, player, card_types, shuffle: bool=False, hand_size=0):
+def build_deck(game_state, player, card_types, shuffle: bool=False, hand_size=0) -> Tuple[List[Card], List[Card]]:
     cards = [ty(game_state, owner=player) for ty in card_types]
     if shuffle:
         random.shuffle(cards)

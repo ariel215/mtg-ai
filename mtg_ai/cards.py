@@ -138,10 +138,9 @@ class Card(game.GameObject):
         self._state._owner = self
 
         if self._def._types & game.SPELL_TYPES:
-            dest_zone = zones.Grave(owner=owner)
+            dest = actions.MoveTo(zone=zones.Grave(self.owner)).bind(card=self)
         else:
-            dest_zone = zones.Field(owner=owner)
-        dest = actions.MoveTo(dest_zone).bind(card=self)
+            dest = actions.Play(self)
         self.effect = effect + dest if effect is not None else dest
 
         if game_state is not None:

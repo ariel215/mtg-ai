@@ -76,7 +76,7 @@ class GameState:
 
     def __init__(self,players: List[Player], *, 
                 mana_pool: Optional['Mana']=None, 
-                turn_number:int=0,
+                turn_number:int=1,
                 land_drops: int = 1,
                 active_player: Player | None = None,
                 hash_kind:HashKind = HashKind.FULL):

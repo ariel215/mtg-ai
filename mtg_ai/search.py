@@ -129,10 +129,10 @@ class MCTSSearcher:
     def score(self, node: HistoryNode) -> float:
         info = node.stats
         if info is None:
-            return 0
+            return 0.0
 
         value = info.value / info.visits
-        ucb = self.C * math.sqrt(node.parent.stats.visits / info.visits)
+        ucb = self.C * math.sqrt(math.log(node.parent.stats.visits) / info.visits)
         return value + ucb
 
     def playout(self, state: HistoryNode, max_turns: int) -> float:
@@ -141,7 +141,7 @@ class MCTSSearcher:
         while current.turn_number < max_turns:
             if self.condition(current):
                 logger.debug(f"Found victory by turn {current.turn_number}")
-                return 1.0 / current.turn_number ** 2
+                return 1.0 / current.turn_number
             possible = actions.possible_actions(current) or [END_TURN]
             action = random.choice(possible)
             choice = random.choice(action.choices(current))
@@ -224,7 +224,10 @@ class MCTSSearcher:
         nvisits = [(child,child.stats.visits) for child in new_children]
         if len(nvisits) > 1:
             nvisits = [pair for pair in nvisits if pair[0].game_state is not END_TURN]
-        return max(nvisits, key=lambda p: p[1])[0]
+        choice, n= max(nvisits, key=lambda p: p[1])
+        print(f"visited {n} times")
+        return choice
+
 
     
     @property

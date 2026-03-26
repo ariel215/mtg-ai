@@ -17,6 +17,11 @@ def possible_actions(game_state: GameState) -> List[Action]:
     in the current game state
     """
     player = game_state.players[game_state.active_player]
+    if len(game_state.triggers) > 0:
+        return [
+            StackTriggers()
+        ]
+        
     hand = game_state.in_zone(zones.Hand(player))
     actions = [PlayLand(card) if CardType.Land in card.attrs.types else CastSpell(card) for card in hand ]
     field = game_state.in_zone(zones.Field(player))
@@ -67,7 +72,7 @@ class Play(Action):
             self.params['card'] = card
     
     def choices(self, _game_state):
-        return [{'card': self.card}] # todo: does the card need to make choices as it enters?
+        return [{'card': self.params.get('card')}] # todo: does the card need to make choices as it enters?
     
     def do(self, game_state: GameState, card):
         card = game_state.get(card)
@@ -225,6 +230,16 @@ class Trigger:
             game_state.stack(StackAbility(game_state, self.action))
         else:
             self.action.perform(game_state)
+
+class StackTriggers(Action):
+    def __init__(self):
+        super().__init__()
+    
+    def choices(self,game_state):
+        return [{}]
+
+    def do(self,game_state: GameState,**kwargs):
+        game_state.stack_triggers()
 
 class CastSpell(Action):
     def __init__(self,card):

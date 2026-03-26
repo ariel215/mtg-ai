@@ -53,9 +53,10 @@ def play_mcts_game(limit: int) -> SearchResult:
         print(f"hand: {[card.attrs.name for card in current.game_state.in_zone(mtg_ai.zones.Hand())]}")
         print(f"field: {[card.attrs.name for card in current.game_state.in_zone(mtg_ai.zones.Field())]}")
         print(f"mana: {current.game_state.mana_pool}")
+        print(f"land drops: {current.game_state.land_drops}")
         searcher = search.MCTSSearcher(current.game_state, statistics,search.staff_victory,**params)
-        print(f"choices: {[str(node.action) for node in searcher.expand(searcher.root)]}")
         current = searcher.choose()
+        print(f"choices: {[str(node.action) for node in searcher.root.children]}")
         print(f"(t{current.game_state.turn_number}: {current.action}, {current.choice})")
 
     
