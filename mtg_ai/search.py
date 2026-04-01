@@ -116,7 +116,7 @@ def bfs(initial: GameState, condition, timeout=int(1e6)) -> SearchResult:
 
 
 class MCTSSearcher:
-    def __init__(self, initial_state: GameState,statistics:Dict[GameState, MCTSInfo], condition: Callable[[GameState],bool],
+    def __init__(self, initial_state: GameState, statistics: Dict[tuple, MCTSInfo], condition: Callable[[GameState],bool],
         C: float, max_turns: int = 10, n_iters: int=1000):
         self.root = HistoryNode(initial_state)
         self.stats = statistics
@@ -151,6 +151,15 @@ class MCTSSearcher:
         logger.debug(f"failed to find victory before turn {max_turns}")
         return 0
 
+    def _seed_from_table(self, nodes: list) -> None:
+        """Initialise node.stats from the transposition table for any known states."""
+        for node in nodes:
+            if node.stats is None:
+                key = canonical_key(node.game_state)
+                if key in self.stats:
+                    info = self.stats[key]
+                    node.stats = MCTSInfo(value=info.value, visits=info.visits)
+
     def backpropogate(self, state: HistoryNode | None, value: float):
         while state:
             if state.stats is None:
@@ -158,6 +167,9 @@ class MCTSSearcher:
             info = state.stats
             info.value += value
             info.visits += 1
+            self.stats[canonical_key(state.game_state)] = MCTSInfo(
+                value=info.value, visits=info.visits
+            )
             state = state.parent
 
     def explore_node(self, node: HistoryNode):
@@ -189,8 +201,17 @@ class MCTSSearcher:
         Run an iteration of MCTS to compute the best next move.
         """
         children = self.root.expand()
-        for i,child in enumerate(children):
-            updated = self.explore_node(child)
+        self._seed_from_table([self.root] + children)
+
+        # Force-explore any child not yet known; backpropagate also sets root.stats
+        for child in children:
+            if child.stats is None:
+                self.explore_node(child)
+
+        # Edge case: all children were seeded but root.stats still None
+        if self.root.stats is None:
+            self.explore_node(children[0])
+
         assert all(child.stats is not None for child in children)
 
         def key(i_s):
