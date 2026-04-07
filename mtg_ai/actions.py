@@ -17,6 +17,11 @@ def possible_actions(game_state: GameState) -> List[Action]:
     in the current game state
     """
     player = game_state.players[game_state.active_player]
+    if len(game_state.triggers) > 0:
+        return [
+            StackTriggers()
+        ]
+        
     hand = game_state.in_zone(zones.Hand(player))
     actions = [PlayLand(card) if CardType.Land in card.attrs.types else CastSpell(card) for card in hand ]
     field = game_state.in_zone(zones.Field(player))
@@ -55,8 +60,8 @@ class Draw(Action):
         deck = game_state.in_zone(zones.Deck(owner=player))
         if not deck:
             return None # todo: game loss
-        
-        card = deck.pop()
+
+        card = game_state.get(deck.pop())
         card.zone = zones.Hand(owner=player)
         return Event(self,game_state,card,None)
 
@@ -67,7 +72,7 @@ class Play(Action):
             self.params['card'] = card
     
     def choices(self, _game_state):
-        return [{'card': self.card}] # todo: does the card need to make choices as it enters?
+        return [{'card': self.params.get('card')}] # todo: does the card need to make choices as it enters?
     
     def do(self, game_state: GameState, card):
         card = game_state.get(card)
@@ -95,24 +100,28 @@ class MoveTo(Action):
     def do(self, game_state,card):
         zone = self.zone(game_state)
         if zone.position == zones.TOP:
+            in_zone = game_state.in_zone(type(zone)(zone.owner))
             top = max(
-                [card.zone.position for card in game_state.objects if hasattr(card,'zone')],
+                [c.zone.position for c in in_zone],
                 default=0
             )
-            zone.position = top + 1
+            position = top + 1
         elif zone.position == zones.BOTTOM:
             in_zone = game_state.in_zone(type(zone)(zone.owner))
-            bottom = min([c.zone.position for c in in_zone if hasattr(c, "zone")], default=0)
-            zone.position = bottom
-            for card in in_zone:
-                card.zone.position += 1
+            position = min([c.zone.position for c in in_zone if hasattr(c, "zone")], default=0)
+            
+            for other in in_zone:
+                other = game_state.get(other)
+                old_zone = other.zone
+                other.zone = type(old_zone)(old_zone.owner, old_zone.position + 1)
 
         else:
             # position should not matter in this case
             assert zone.position is None
-            
+            position = zone.position
+             
         card = game_state.get(card)
-        card.zone = zone
+        card.zone = type(zone)(owner=zone.owner, position=position)
 
 
 class Sacrifice(Action):
@@ -221,6 +230,16 @@ class Trigger:
             game_state.stack(StackAbility(game_state, self.action))
         else:
             self.action.perform(game_state)
+
+class StackTriggers(Action):
+    def __init__(self):
+        super().__init__()
+    
+    def choices(self,game_state):
+        return [{}]
+
+    def do(self,game_state: GameState,**kwargs):
+        game_state.stack_triggers()
 
 class CastSpell(Action):
     def __init__(self,card):
@@ -371,7 +390,7 @@ class EndTurn(Action):
     def do(self,game_state: GameState):
         game_state.mana_pool = Mana()
         for card in game_state.in_zone(zones.Field()):
-            card.tapped = False
+            game_state.get(card).tapped = False
         game_state.summoning_sick.clear()
         game_state.turn_number += 1
         game_state.land_drops = 1

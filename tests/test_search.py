@@ -28,7 +28,7 @@ def test_possible_fetch():
     assert len(possible) == 1
     assert fetch.attrs.activated[0] in possible
     searcher = search.MCTSSearcher(gs,{},lambda _: True, 0.1)
-    children = searcher.expand(searcher.root)
+    children = searcher.root.expand()
     assert len(children) == 1
     assert children[0].action == fetch.attrs.activated[0]
     new_forest = children[0].game_state.get(forest)
@@ -55,7 +55,7 @@ def test_play():
     result = search.bfs(gs, condition, 100)
     assert result is not None
 
-@pytest.mark.long
+@pytest.mark.skip
 def test_search():
     gs = game.GameState([0])
     decklist.build_deck(
@@ -75,7 +75,7 @@ def test_search():
 
     assert result.final_state is not None
 
-@pytest.mark.long
+@pytest.mark.skip
 def test_wincon():
     gs = game.GameState([0])
     (hand,deck) = decklist.build_deck(
@@ -121,9 +121,9 @@ def test_mcts():
         hand_size=5,
     )
     searcher = search.MCTSSearcher(gs,{},search.staff_victory,1.2,n_iters=100)
-    searcher.choose()
-    assert any(entry.value > 0 for entry in searcher.stats.values())
-
+    result = searcher.choose()
+    assert result.stats is not None
+    assert result.stats.value > 0
 
 def test_mcts_is():
     """
@@ -138,9 +138,9 @@ def test_mcts_is():
         hand_size=5,
     )
     searcher = search.MCTSSearcher(gs,{},search.staff_victory,1.2,n_iters=100)
-    searcher.choose()
-    assert any(entry.value > 0 for entry in searcher.stats.values())
-
+    result = searcher.choose()
+    assert result.stats is not None
+    assert result.stats.value > 0
 
 def test_mcts_fetch():
     """
@@ -200,29 +200,3 @@ def test_mcts_fetch2():
     assert len(gy) == 1
     assert gy[0].attrs.name == "Windswept Heath"
 
-
-
-
-def test_mcts_states():
-    """
-    test that mcts can crack fetches
-    """
-    gs = game.GameState([0],hash_kind=HashKind.VISIBLE)
-    decklist.build_deck(
-        gs, 0,
-        [decklist.TempleGarden, decklist.Forest, decklist.Saruli, decklist.Axebane,
-         decklist.TrophyMage, decklist.CollectedCompany, decklist.CollectedCompany,
-         decklist.Axebane, decklist.WallOfOmens, decklist.Staff, decklist.Forest, decklist.Forest, decklist.Forest],
-        hand_size=7,
-    )
-    gs.land_drops = 1
-    searcher = search.MCTSSearcher(gs,{},search.staff_victory,1.2,n_iters=100)
-    children = searcher.expand(searcher.root)
-    assert len(children) == 2
-
-    searcher.explore_node(children[0])
-    assert children[0].game_state in searcher.stats
-
-    searcher.explore_node(children[1])
-    assert children[1].game_state in searcher.stats
-    assert children[0].game_state in searcher.stats

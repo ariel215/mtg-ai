@@ -15,9 +15,5 @@ include = ["mtg_ai*"]
 [dependency-groups]
 dev = [
     "pytest>=8.4.2",
-]
-
-[pytest]
-markers = [
-    "long"
+    "snakeviz>=2.2.2",
 ]

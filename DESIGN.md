@@ -177,3 +177,26 @@ Breaking down Wall of Omens'ability -- "When CARDNAME enters the battlefield, dr
 - the object performing the action: CARDNAME
 - the object creating the trigger: CARDNAME
 - the effect: CARDNAME's owner draws a card
+
+# MCTS and IS-MCTS
+
+The goal is to:
+a) develop a system that, through random simulation, can learn
+   how to play mtg or at least how to pilot walls
+b) have this not take ~forever
+c) ultimately use alphago-like architecture to do the learning
+
+a) is more or less accomplished, which means we now turn to (b),
+having this execute in a reasonable amount of time. This probably
+means at least a partial redesign?
+
+Action 1: review code and make sure that we are creating as few objects
+as possible. Since game states are the heaviest, these are
+the most important to not duplicate; other objects may not be a
+bottleneck.
+
+Action 2: use slots in more places?
+
+Action 3: review allocation patterns (can we meaningfully control this in Python?)
+
+Action 4: find vector representation that isn't python objects

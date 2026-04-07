@@ -1,3 +1,4 @@
+from typing import Tuple, List
 import random
 from mtg_ai import actions, game, getters, zones, mana
 from mtg_ai.cards import Card
@@ -168,6 +169,27 @@ class WallOfOmens(Card):
             condition=lambda ev: ev.source.uid == self.uid,
             action=actions.Draw(getters.Controller(self))
         )
+
+class WallOfBlossoms(Card):
+    def __init__(self, game_state, owner=None):
+        super().__init__(
+            name="Wall of Blossoms",
+            types=(CardType.Creature,),
+            subtypes=("wall",),
+            cost = mana.Mana(green=1, generic=1),
+            game_state=game_state,
+            power=0,
+            toughness=4,
+            keywords=["defender"],
+            owner = owner or 0
+        )
+
+        self.triggered(
+            when=actions.Play,
+            condition=lambda ev: ev.source.uid == self.uid,
+            action=actions.Draw(getters.Controller(self))
+        )
+
 
 class Battlement(Card):
     def __init__(self, game_state, owner=None):
@@ -422,7 +444,7 @@ class Kaysa(Card):
                      modification=lambda gs, x: x + 1)
 
  
-def build_deck(game_state, player, card_types, shuffle: bool=False, hand_size=0):
+def build_deck(game_state, player, card_types, shuffle: bool=False, hand_size=0) -> Tuple[List[Card], List[Card]]:
     cards = [ty(game_state, owner=player) for ty in card_types]
     if shuffle:
         random.shuffle(cards)

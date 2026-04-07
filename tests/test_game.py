@@ -1,7 +1,8 @@
-from mtg_ai.game import HashKind
+from mtg_ai.decklist import build_deck
+from mtg_ai.actions import possible_actions, PlayLand
+from mtg_ai.game import HashKind, GameState
 from mtg_ai import cards, game, actions, getters, zones, mana, decklist
 from mtg_ai.game import StaticEffect, StaticAbility
-
 
 def test_forest():
     g0 = game.GameState([0])
@@ -28,6 +29,25 @@ def test_forest():
 
     assert g1.mana_pool.green == 0
     assert not g1.get(f1).tapped
+
+def test_play_land():
+    g0 = game.GameState([0])
+    deck = [decklist.Forest(g0), decklist.Forest(g0), decklist.Forest(g0)]
+    for (i,card) in enumerate(deck):
+        card.zone = zones.Deck(0,int(i))
+
+    [f1, f2, f3] = deck
+    f1.zone = zones.Hand(0)
+    f2.zone= zones.Hand(0)
+
+    possible = possible_actions(g0)
+    play_land = next(action for action in possible if isinstance(action,PlayLand))
+    assert g0.land_drops == 1
+    g1 = g0.take_action(play_land)
+    assert g1.land_drops == 0
+    now_possible = possible_actions(g1)
+    assert not any(isinstance(action, PlayLand) for action in now_possible)
+
 
 
 def test_cast():
@@ -240,6 +260,30 @@ def test_trophy_mage():
     g1.stack_triggers()
     g2 = g1.resolve_stack()
     assert zones.Hand(0).contains(g2.get(deck[0]))
+
+def test_trophy_auto():
+    g0 = game.GameState([0])
+    (hand,deck) = build_deck(g0,0,[decklist.TrophyMage,decklist.Staff],hand_size=1)
+    field = [decklist.Forest(g0),decklist.Forest(g0), decklist.Island(g0)]
+    for card in field: 
+        card.zone = zones.Field(0)
+
+    # sequence: 
+    # tap land x3 -> cast spell -> resolve stack -> stack triggers -> resolve stack
+    # apart from tapping lands there should only be one possible thing to do
+    current_game = g0
+    for _ in range(7):
+        actions = possible_actions(current_game)
+        act = actions[0]
+        choices: list[dict[str, Unknown]] = act.get_choices(current_game)
+        choice = choices[0]
+        print(f"{str(act)}: {str(choice)}")
+        current_game = current_game.take_action(act,choice)
+    
+    assert len(current_game.in_zone(zones.Field())) == 4
+    assert len(current_game.triggers) == 0
+    assert len(current_game.in_zone(zones.Hand())) == 1
+    assert len(current_game.in_zone(zones.Deck())) == 0
 
 def test_summoning_sickness():
     gs = game.GameState([0])
