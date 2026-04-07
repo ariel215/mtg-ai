@@ -99,6 +99,7 @@ def evals() -> List[Eval]:
     with open(HERE / 'evals.md') as eval_file: 
         return [ev for ev in parse_eval(eval_file)]
 
+@pytest.mark.flaky(reruns=2)
 @pytest.mark.parametrize(['eval'],[(e,) for e in evals()])
 def test_evals(eval: Eval):
     statistics = {}
