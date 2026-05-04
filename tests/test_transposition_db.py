@@ -4,6 +4,7 @@ TDD tests for SQLite persistence of the MCTS transposition table.
 All tests should FAIL before mtg_ai/transposition_db.py is implemented
 and PASS after.
 """
+import sqlite3
 import os
 import pytest
 from mtg_ai import decklist, game, search, zones
@@ -101,6 +102,21 @@ def test_load_from_nonexistent_path(tmp_path):
     assert not os.path.exists(db)
     result = transposition_db.load_statistics(db)
     assert result == {}
+
+
+# --------------------------------------
+# Test 4a: saving game results works as expected
+# -----------------------------------------
+
+def test_save_results(tmp_path):
+    db = str(tmp_path / "results.db")
+    key,_  = _simple_key()
+    transposition_db.save_statistics(db, {key: MCTSInfo(value=0.1, visits=10)})
+    transposition_db.save_result(db, key,3)
+    with sqlite3.connect(db) as conn:
+        conn.row_factory = sqlite3.Row
+        result = conn.execute("SELECT * from mcts_results").fetchall()
+    assert len(result) == 1
 
 
 # ---------------------------------------------------------------------------

@@ -11,6 +11,7 @@ This module provides three operations:
 Schema follows the design in .notes/SERIALIZATION.md (subset: no mcts_edges or
 pending_triggers, which are out of scope for the transposition table).
 """
+from mtg_ai.game import GameState
 import hashlib
 import os
 import pickle
@@ -69,7 +70,13 @@ CREATE TABLE IF NOT EXISTS mcts_stats (
     value         REAL    NOT NULL DEFAULT 0.0,
     visits        INTEGER NOT NULL DEFAULT 0
 );
-"""
+
+CREATE TABLE IF NOT EXISTS mcts_results(
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    game_state_id INTEGER NOT NULL REFERENCES game_states(id) ON DELETE CASCADE,
+    final_turn    INTEGER NOT NULL
+);
+""" 
 
 
 def _canonical_hash(key: tuple) -> bytes:
@@ -258,6 +265,20 @@ def save_statistics(path: str, statistics: Dict[tuple, MCTSInfo]) -> None:
             gs_fields, objects = _decompose_key(key)
             _insert_game_state(conn, chash, gs_fields, objects, info, replace_stats=True)
 
+
+def save_result(path: str, start: tuple, result: int):
+    with sqlite3.connect(path) as conn:
+        conn.row_factory = sqlite3.Row
+        _ensure_schema(conn)
+        chash = _canonical_hash(start)
+        gs_id = conn.execute(
+            "SELECT id FROM game_states WHERE canonical_hash = ?", (chash,)
+        ).fetchone()['id']
+
+        conn.execute("""
+            INSERT INTO mcts_results (game_state_id, final_turn) 
+            VALUES (?,?)
+        """, (gs_id, result))
 
 def load_statistics(path: str) -> Dict[tuple, MCTSInfo]:
     """

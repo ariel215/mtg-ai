@@ -1,3 +1,4 @@
+import stat
 from mtg_ai.actions import Search
 import math
 import random
@@ -129,6 +130,7 @@ class MCTSSearcher:
     def score(self, node: HistoryNode) -> float:
         info = node.stats
         if info is None:
+            node.stats = self.stats.get(canonical_key(node.game_state))
             return 0.0
 
         value = info.value / info.visits
@@ -163,7 +165,7 @@ class MCTSSearcher:
     def backpropogate(self, state: HistoryNode | None, value: float):
         while state:
             if state.stats is None:
-                state.stats = MCTSInfo()
+                state.stats = self.stats.get(canonical_key(state.game_state)) or MCTSInfo()
             info = state.stats
             info.value += value
             info.visits += 1
