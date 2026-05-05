@@ -4,6 +4,10 @@ TDD tests for SQLite persistence of the MCTS transposition table.
 All tests should FAIL before mtg_ai/transposition_db.py is implemented
 and PASS after.
 """
+from mtg_ai.transposition_db import _canonical_hash, _ensure_schema
+import stat
+import random
+from random import randint
 import sqlite3
 import os
 import pytest
@@ -39,6 +43,29 @@ def _richer_key():
     wall = decklist.WallOfRoots(gs)
     wall.zone = zones.Field(0)
     wall.counters['minus_one'] += 1
+    return canonical_key(gs), gs
+
+def _random_key():
+    """
+    A key with enough non-trivial state that repeated invocations can 
+    be called without ever returning the same state
+    """
+    gs = game.GameState(players=[0], mana_pool=game.Mana(green=randint(0,4), white=randint(0,4), blue=randint(0,4)))
+    card_types = [
+        decklist.Forest,
+        decklist.Island,
+        decklist.Arcades,
+        decklist.WallOfRoots,
+        decklist.WallOfOmens,
+        decklist.SteelWall,
+        decklist.BreedingPool,
+        decklist.TrophyMage]
+    for card_type in card_types:
+        ncards = randint(0,4)
+        for _ in range(ncards):
+            card = card_type(game_state=gs)
+            card.zone = random.choice((zones.Field(0),zones.Hand(0), zones.Grave(0)))
+
     return canonical_key(gs), gs
 
 
@@ -93,6 +120,20 @@ def test_save_and_load_multiple_entries(tmp_path):
     assert loaded[key2].visits == 7
 
 
+def test_save_and_load_many_entries(tmp_path):
+    db = str(tmp_path / "stats.db")
+    keys = [_random_key()[0] for _ in range(transposition_db._BATCH_SIZE * 2)]
+    stats = {
+        k: MCTSInfo(i,i)
+        for i,k in enumerate(keys)
+    }
+    assert len(stats) == len(keys)
+    transposition_db.save_statistics(db,stats)
+    loaded = transposition_db.load_statistics(db)
+    assert len(loaded) == len(stats)
+    assert set(loaded.keys()) == set(stats.keys())
+
+
 # ---------------------------------------------------------------------------
 # Test 4: loading from a non-existent path returns an empty dict (not an error)
 # ---------------------------------------------------------------------------
@@ -117,6 +158,28 @@ def test_save_results(tmp_path):
         conn.row_factory = sqlite3.Row
         result = conn.execute("SELECT * from mcts_results").fetchall()
     assert len(result) == 1
+
+# --------------------------------------
+# Test 4b: saving game results inserts game state when it is not already in the database
+# -----------------------------------------
+
+def test_save_results_without_gamestate(tmp_path):
+    db = str(tmp_path / "results.db")
+    key,_  = _simple_key()
+    chash = transposition_db._canonical_hash(key)
+    with sqlite3.connect(db) as conn:
+        transposition_db._ensure_schema(conn)
+        gs_row = conn.execute("SELECT id from game_states where canonical_hash = ?", (chash,)).fetchone()
+        assert gs_row is None
+    transposition_db.save_result(db, key,3)
+    with sqlite3.connect(db) as conn:
+        conn.row_factory = sqlite3.Row
+        result = conn.execute("SELECT * from mcts_results").fetchall()
+        gs_row = conn.execute("SELECT id from game_states where canonical_hash = ?", (chash,)).fetchone()
+        gs_id = gs_row['id']
+    assert len(result) == 1
+    assert result[0]['id'] == gs_id
+
 
 
 # ---------------------------------------------------------------------------

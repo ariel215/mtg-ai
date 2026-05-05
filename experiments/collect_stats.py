@@ -53,18 +53,20 @@ def do_run(db_path, C, max_turns, n_iters,*args):
         node = searcher.choose()
         game = node.game_state
 
-    mtg_ai.transposition_db.merge_statistics(DB,stats)
-    mtg_ai.transposition_db.save_result(DB, canonical_key(initial_game),node.game_state.turn_number)
+    mtg_ai.transposition_db.merge_statistics(db_path,stats)
+    mtg_ai.transposition_db.save_result(db_path, canonical_key(initial_game),node.game_state.turn_number)
 
 def run_batch(batch_size, db_path, C, max_turns, n_iters):
-    pool = multiprocessing.Pool()
-    pool.map(functools.partial(do_run, db_path, C, max_turns,n_iters),range(batch_size))
+    if batch_size > 1:
+        pool = multiprocessing.Pool()
+        pool.map(functools.partial(do_run, db_path, C, max_turns,n_iters),range(batch_size-1))
+    do_run(db_path,C, max_turns,n_iters)
 
 
 if __name__ == "__main__":
     import argparse 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch_size", required=True, type=int)
+    parser.add_argument("--batch_size", required=False, type=int, default=1)
     parser.add_argument("--db", required=False, default=DB)
     parser.add_argument("--C", required=False, default=1.2,type=float)
     parser.add_argument("--max_turns", required=False, default=10, type=int)

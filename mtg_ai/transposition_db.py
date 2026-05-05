@@ -11,6 +11,7 @@ This module provides three operations:
 Schema follows the design in .notes/SERIALIZATION.md (subset: no mcts_edges or
 pending_triggers, which are out of scope for the transposition table).
 """
+import itertools
 from mtg_ai.game import GameState
 import hashlib
 import os
@@ -78,6 +79,8 @@ CREATE TABLE IF NOT EXISTS mcts_results(
 );
 """ 
 
+# sqlite has a maximum placeholder size
+_BATCH_SIZE = 2**15-5
 
 def _canonical_hash(key: tuple) -> bytes:
     """SHA-256 of the canonical key, stable across processes."""
@@ -273,12 +276,19 @@ def save_result(path: str, start: tuple, result: int):
         chash = _canonical_hash(start)
         gs_id = conn.execute(
             "SELECT id FROM game_states WHERE canonical_hash = ?", (chash,)
-        ).fetchone()['id']
-
+        ).fetchone()
+        if gs_id is None:
+            gs_fields , objects = _decompose_key(start)
+            _insert_game_state(conn,chash,gs_fields,objects,MCTSInfo(0,0),False)
+            gs_id = conn.execute(
+            "SELECT id FROM game_states WHERE canonical_hash = ?", (chash,)
+            ).fetchone()
+        gs_id = gs_id['id']
         conn.execute("""
             INSERT INTO mcts_results (game_state_id, final_turn) 
             VALUES (?,?)
         """, (gs_id, result))
+
 
 def load_statistics(path: str) -> Dict[tuple, MCTSInfo]:
     """
@@ -304,21 +314,36 @@ def load_statistics(path: str) -> Dict[tuple, MCTSInfo]:
 
         # Load all objects and counters in bulk
         gs_ids = [row['id'] for row in gs_rows]
-        placeholders = ','.join('?' * len(gs_ids))
+        gs_batches = list(itertools.batched(gs_ids,_BATCH_SIZE))
+        placeholder_batches = [','.join('?' * len(batch))
+            for batch in gs_batches
+        ]
 
-        obj_rows = conn.execute(
-            f"SELECT * FROM game_objects WHERE game_state_id IN ({placeholders})",
-            gs_ids
-        ).fetchall()
-
+        obj_rows = [
+            row
+            for (placeholders, ids) in zip(placeholder_batches,gs_batches)
+            for row in  
+            conn.execute(
+                f"SELECT * FROM game_objects WHERE game_state_id IN ({placeholders})",
+                ids
+            ).fetchall()
+        ]
+        
         obj_ids = [obj['id'] for obj in obj_rows]
         counter_map: dict[int, list] = {}
         if obj_ids:
-            ctr_placeholders = ','.join('?' * len(obj_ids))
-            ctr_rows = conn.execute(
-                f"SELECT * FROM object_counters WHERE game_object_id IN ({ctr_placeholders})",
-                obj_ids
-            ).fetchall()
+            obj_batches = list(itertools.batched(obj_ids,_BATCH_SIZE))
+            placeholder_batches = [','.join('?' * len(batch))
+                for batch in obj_batches
+            ]
+            ctr_rows = [
+                row for (ctr_placeholders, ids) in zip(placeholder_batches,obj_batches)
+                for row in 
+                conn.execute(
+                    f"SELECT * FROM object_counters WHERE game_object_id IN ({ctr_placeholders})",
+                    ids
+                ).fetchall()
+            ]
             for ctr in ctr_rows:
                 counter_map.setdefault(ctr['game_object_id'], []).append(
                     (ctr['counter_type'], ctr['count'])
