@@ -21,3 +21,4 @@ wheels/
 
 # other
 *.sqlite*
+*.sql*

@@ -289,3 +289,129 @@ def test_integration_with_mcts_searcher(tmp_path):
 
     # Root was seeded, so visits include the pre-loaded count plus this run's
     assert s2.root.stats.visits > visits_after_s1
+
+
+# ---------------------------------------------------------------------------
+# LazyTranspositionDB tests
+# ---------------------------------------------------------------------------
+
+def test_lazy_lookup_hit(tmp_path):
+    """Keys present in the DB are returned on demand."""
+    db = str(tmp_path / "stats.db")
+    key, _ = _simple_key()
+    transposition_db.save_statistics(db, {key: MCTSInfo(value=1.5, visits=3)})
+
+    with transposition_db.LazyTranspositionDB(db) as lazy:
+        assert key in lazy
+        info = lazy.get(key)
+        assert info is not None
+        assert info.value == pytest.approx(1.5)
+        assert info.visits == 3
+
+
+def test_lazy_lookup_miss(tmp_path):
+    """Keys absent from the DB return None / raise KeyError as expected."""
+    db = str(tmp_path / "stats.db")
+    key, _ = _simple_key()
+
+    with transposition_db.LazyTranspositionDB(db) as lazy:
+        assert key not in lazy
+        assert lazy.get(key) is None
+        with pytest.raises(KeyError):
+            _ = lazy[key]
+
+
+def test_lazy_flush_overwrites(tmp_path):
+    """flush() writes dirty entries and overwrites existing value/visits."""
+    db = str(tmp_path / "stats.db")
+    key, _ = _simple_key()
+    transposition_db.save_statistics(db, {key: MCTSInfo(value=1.0, visits=10)})
+
+    with transposition_db.LazyTranspositionDB(db) as lazy:
+        lazy[key] = MCTSInfo(value=9.0, visits=99)
+        lazy.flush()
+
+    loaded = transposition_db.load_statistics(db)
+    assert loaded[key].value == pytest.approx(9.0)
+    assert loaded[key].visits == 99
+
+
+def test_lazy_merge_accumulates(tmp_path):
+    """merge() accumulates value and visits into existing DB entries."""
+    db = str(tmp_path / "stats.db")
+    key, _ = _simple_key()
+    transposition_db.save_statistics(db, {key: MCTSInfo(value=1.0, visits=10)})
+
+    with transposition_db.LazyTranspositionDB(db) as lazy:
+        lazy[key] = MCTSInfo(value=0.5, visits=5)
+        lazy.merge()
+
+    loaded = transposition_db.load_statistics(db)
+    assert loaded[key].value == pytest.approx(1.5)
+    assert loaded[key].visits == 15
+
+
+def test_lazy_cache_stays_small(tmp_path):
+    """Only fetched keys end up in the cache; untouched keys are not loaded."""
+    db = str(tmp_path / "stats.db")
+    key1, _ = _simple_key()
+    key2, _ = _richer_key()
+    transposition_db.save_statistics(db, {
+        key1: MCTSInfo(value=1.0, visits=1),
+        key2: MCTSInfo(value=2.0, visits=2),
+    })
+
+    with transposition_db.LazyTranspositionDB(db) as lazy:
+        _ = lazy.get(key1)
+        assert len(lazy._cache) == 1
+        assert key1 in lazy._cache
+        assert key2 not in lazy._cache
+
+
+def test_lazy_items_compatible_with_save_statistics(tmp_path):
+    """items() makes LazyTranspositionDB usable with save_statistics()."""
+    db = str(tmp_path / "stats.db")
+    key, _ = _simple_key()
+
+    with transposition_db.LazyTranspositionDB(db) as lazy:
+        lazy[key] = MCTSInfo(value=3.0, visits=7)
+        # Pass lazy directly to save_statistics via its items() method
+        transposition_db.save_statistics(db, lazy)  # type: ignore[arg-type]
+
+    loaded = transposition_db.load_statistics(db)
+    assert loaded[key].value == pytest.approx(3.0)
+    assert loaded[key].visits == 7
+
+
+def test_lazy_integration_with_mcts_searcher(tmp_path):
+    """
+    LazyTranspositionDB seeds a searcher from the DB and accumulates new stats
+    back via flush(), without ever loading the full table into memory.
+    """
+    db = str(tmp_path / "stats.db")
+
+    def build_state():
+        gs = game.GameState([0])
+        f1 = decklist.Forest(gs)
+        f1.zone = zones.Hand(0)
+        f2 = decklist.Forest(gs)
+        f2.zone = zones.Hand(0)
+        return gs
+
+    # First run — populate DB
+    gs1 = build_state()
+    stats1: dict = {}
+    s1 = MCTSSearcher(gs1, stats1, _never, C=1.2, n_iters=5)
+    s1.explore()
+    assert s1.root.stats is not None
+    visits_after_s1 = s1.root.stats.visits
+    transposition_db.save_statistics(db, stats1)
+
+    # Second run — use lazy DB instead of loading everything
+    gs2 = build_state()
+    with transposition_db.LazyTranspositionDB(db) as lazy:
+        s2 = MCTSSearcher(gs2, lazy, _never, C=1.2, n_iters=5)  # type: ignore[arg-type]
+        s2.explore()
+        assert s2.root.stats is not None
+        assert s2.root.stats.visits > visits_after_s1
+        lazy.flush()

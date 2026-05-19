@@ -181,7 +181,7 @@ class MCTSSearcher:
                 value = 0
                 break
             children = current.expand()
-            unexplored = [child for child in children if child.stats is not None]
+            unexplored = [child for child in children if child.stats is None]
             if unexplored:
                 current = random.choice(children)
                 value = self.playout(current,self.max_turns - current.game_state.turn_number)
