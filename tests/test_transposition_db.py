@@ -4,6 +4,7 @@ TDD tests for SQLite persistence of the MCTS transposition table.
 All tests should FAIL before mtg_ai/transposition_db.py is implemented
 and PASS after.
 """
+from re import M
 from mtg_ai.transposition_db import _canonical_hash, _ensure_schema
 import stat
 import random
@@ -181,6 +182,26 @@ def test_save_results_without_gamestate(tmp_path):
     assert result[0]['id'] == gs_id
 
 
+def test_load_all_results(tmp_path):
+    db = str(tmp_path / "results.db")
+    initial_keys = [_random_key()[0], _random_key()[0], _random_key()[0]]
+    other_keys = [_random_key()[0], _random_key()[0], _random_key()[0]]
+    stats = {
+        initial_keys[0]: MCTSInfo(0.1, 10),
+        initial_keys[1]: MCTSInfo(0.4, 3),
+        initial_keys[2]: MCTSInfo(1, 1),
+        
+        other_keys[0]: MCTSInfo(0.1, 10),
+        other_keys[1]: MCTSInfo(0.4, 3),
+        other_keys[2]: MCTSInfo(1, 1)
+    }
+    transposition_db.save_statistics(db,stats)
+    for r,k in enumerate(initial_keys):
+        transposition_db.save_result(db,k,r) 
+    results = transposition_db.load_all_results(db)
+    assert all(k in results for k in initial_keys)
+    for r,k in enumerate(initial_keys):
+        assert results[k] == r
 
 # ---------------------------------------------------------------------------
 # Test 5: merge_statistics accumulates value and visits
