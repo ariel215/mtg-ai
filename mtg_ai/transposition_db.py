@@ -17,7 +17,7 @@ import hashlib
 import os
 import pickle
 import sqlite3
-from typing import Dict
+from typing import Dict, List, Iterable
 
 from mtg_ai.search import MCTSInfo
 
@@ -90,6 +90,15 @@ def _canonical_hash(key: tuple) -> bytes:
 def _ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(_SCHEMA)
 
+
+def _execute_batched(conn: sqlite3.Connection, statement: str, elements: Iterable) -> List[sqlite3.Row]:
+    batches = list(itertools.batched(elements,_BATCH_SIZE))
+    placeholders = [','.join('?' * len(batch)) for batch in batches]
+    return [
+        row 
+        for (placeholder, batch) in zip(placeholders, batches)
+        for row in conn.execute(statement.format(placeholder),batch).fetchall()
+    ]
 
 def _decompose_key(key: tuple) -> tuple:
     """
@@ -289,6 +298,83 @@ def save_result(path: str, start: tuple, result: int):
             VALUES (?,?)
         """, (gs_id, result))
 
+def load_result(path: str, game: tuple) -> int | None:
+    with sqlite3.connect(database=path) as conn:
+        conn.row_factory = sqlite3.Row
+        _ensure_schema(conn)
+        chash = _canonical_hash(game)
+        gs_row = conn.execute(
+            "SELECT id FROM game_states WHERE canonical_hash = ?", (chash,)
+        ).fetchone()
+        if gs_row is None: 
+            return
+        
+        gs_id = gs_row['id']
+        result = conn.execute(
+            "SELECT final_turn FROM mcts_results WHERE game_state_id = ?",
+            gs_id
+        ).fetchone()
+        if result is not None:
+            return result['final_turn']
+
+
+def load_all_results(path: str) -> Dict[tuple, int]:
+    with sqlite3.connect(database=path) as conn:
+        conn.row_factory = sqlite3.Row
+        game_results = [(row['game_state_id'],row['final_turn']) for row in 
+            conn.execute("SELECT * FROM mcts_results").fetchall()
+        ]
+        gs_ids = [result[0] for result in game_results]
+        games = _load_game_states(conn, *gs_ids)
+
+    return {
+        game: result[1] 
+        for (game, result) in zip(games, game_results)
+    }
+
+
+def _load_game_states(conn: sqlite3.Connection, *gs_ids: int) -> List[tuple]:
+    """
+    Recomposes the game state for one or more ids
+    """
+    gs_rows = _execute_batched(
+        conn,
+        "SELECT * FROM game_states WHERE id IN ({})",
+        gs_ids
+    )
+
+    obj_rows = _execute_batched(
+        conn,
+        "SELECT * FROM game_objects WHERE game_state_id IN ({})",
+        gs_ids
+    )
+
+    obj_ids = [obj['id'] for obj in obj_rows]
+    counter_map: dict[int, list] = {}
+    if obj_ids:
+        ctr_rows = _execute_batched(
+            conn,
+            "SELECT * FROM object_counters WHERE game_object_id IN ({})",
+            obj_ids
+        )
+        for ctr in ctr_rows:
+            counter_map.setdefault(ctr['game_object_id'], []).append(
+                (ctr['counter_type'], ctr['count'])
+            )
+
+    # Group objects by game_state_id
+    objs_by_state: dict[int, list] = {}
+    for obj in obj_rows:
+        objs_by_state.setdefault(obj['game_state_id'], []).append(obj)
+
+
+    result: List[tuple] = []
+    for gs_row in gs_rows:
+        state_objs = objs_by_state.get(gs_row['id'], [])
+        result.append(_recompose_key(gs_row, state_objs, counter_map))
+
+    return result
+
 
 def load_statistics(path: str) -> Dict[tuple, MCTSInfo]:
     """
@@ -302,65 +388,109 @@ def load_statistics(path: str) -> Dict[tuple, MCTSInfo]:
     with sqlite3.connect(path) as conn:
         conn.row_factory = sqlite3.Row
         _ensure_schema(conn)
-
-        gs_rows = conn.execute("""
-            SELECT gs.*, ms.value, ms.visits
-            FROM game_states gs
-            JOIN mcts_stats ms ON ms.game_state_id = gs.id
-        """).fetchall()
-
-        if not gs_rows:
-            return {}
-
         # Load all objects and counters in bulk
-        gs_ids = [row['id'] for row in gs_rows]
-        gs_batches = list(itertools.batched(gs_ids,_BATCH_SIZE))
-        placeholder_batches = [','.join('?' * len(batch))
-            for batch in gs_batches
-        ]
+        gs_rows = conn.execute("SELECT * FROM mcts_stats").fetchall()
+        gs_ids = [row['game_state_id'] for row in gs_rows]
+        keys = _load_game_states(conn, *gs_ids)
+        results = {
+            key: MCTSInfo(row['value'], row['visits'])
+            for key, row in zip(keys, gs_rows)
+        }
+        return results
 
-        obj_rows = [
-            row
-            for (placeholders, ids) in zip(placeholder_batches,gs_batches)
-            for row in  
-            conn.execute(
-                f"SELECT * FROM game_objects WHERE game_state_id IN ({placeholders})",
-                ids
-            ).fetchall()
-        ]
-        
-        obj_ids = [obj['id'] for obj in obj_rows]
-        counter_map: dict[int, list] = {}
-        if obj_ids:
-            obj_batches = list(itertools.batched(obj_ids,_BATCH_SIZE))
-            placeholder_batches = [','.join('?' * len(batch))
-                for batch in obj_batches
-            ]
-            ctr_rows = [
-                row for (ctr_placeholders, ids) in zip(placeholder_batches,obj_batches)
-                for row in 
-                conn.execute(
-                    f"SELECT * FROM object_counters WHERE game_object_id IN ({ctr_placeholders})",
-                    ids
-                ).fetchall()
-            ]
-            for ctr in ctr_rows:
-                counter_map.setdefault(ctr['game_object_id'], []).append(
-                    (ctr['counter_type'], ctr['count'])
-                )
 
-        # Group objects by game_state_id
-        objs_by_state: dict[int, list] = {}
-        for obj in obj_rows:
-            objs_by_state.setdefault(obj['game_state_id'], []).append(obj)
+class LazyTranspositionDB:
+    """Dict-like view of the transposition DB that fetches entries on demand.
 
-        result: Dict[tuple, MCTSInfo] = {}
-        for gs_row in gs_rows:
-            state_objs = objs_by_state.get(gs_row['id'], [])
-            key = _recompose_key(gs_row, state_objs, counter_map)
-            result[key] = MCTSInfo(value=gs_row['value'], visits=gs_row['visits'])
+    Use instead of load_statistics() when the DB is large:
+        with LazyTranspositionDB(path) as db:
+            searcher = MCTSSearcher(state, db)
+            searcher.choose(...)
+            db.flush()          # overwrite semantics
+            # or db.merge()     # accumulate semantics
+    """
 
-        return result
+    def __init__(self, path: str) -> None:
+        self._conn = sqlite3.connect(path)
+        self._conn.row_factory = sqlite3.Row
+        _ensure_schema(self._conn)
+        self._cache: Dict[tuple, MCTSInfo] = {}
+        self._dirty: set[tuple] = set()
+
+    def _fetch(self, key: tuple) -> MCTSInfo | None:
+        chash = _canonical_hash(key)
+        row = self._conn.execute(
+            """SELECT ms.value, ms.visits
+               FROM game_states gs
+               JOIN mcts_stats ms ON ms.game_state_id = gs.id
+               WHERE gs.canonical_hash = ?""",
+            (chash,),
+        ).fetchone()
+        if row is None:
+            return None
+        return MCTSInfo(value=row["value"], visits=row["visits"])
+
+    def __contains__(self, key: object) -> bool:
+        if not isinstance(key, tuple):
+            return False
+        if key in self._cache:
+            return True
+        info = self._fetch(key)
+        if info is not None:
+            self._cache[key] = info
+            return True
+        return False
+
+    def __getitem__(self, key: tuple) -> MCTSInfo:
+        if key in self._cache:
+            return self._cache[key]
+        info = self._fetch(key)
+        if info is None:
+            raise KeyError(key)
+        self._cache[key] = info
+        return info
+
+    def get(self, key: tuple, default: MCTSInfo | None = None) -> MCTSInfo | None:
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def __setitem__(self, key: tuple, value: MCTSInfo) -> None:
+        self._cache[key] = value
+        self._dirty.add(key)
+
+    def items(self):
+        """Yields dirty (written this session) entries.
+
+        Makes LazyTranspositionDB compatible with save_statistics() and
+        merge_statistics(), but prefer flush() / merge() to avoid opening
+        a second connection to the same file.
+        """
+        return ((k, self._cache[k]) for k in self._dirty)
+
+    def flush(self) -> None:
+        """Write dirty entries to the DB, overwriting existing value/visits."""
+        self._write(replace_stats=True)
+
+    def merge(self) -> None:
+        """Write dirty entries to the DB, accumulating existing value/visits."""
+        self._write(replace_stats=False)
+
+    def _write(self, replace_stats: bool) -> None:
+        with self._conn:
+            for key in self._dirty:
+                info = self._cache[key]
+                chash = _canonical_hash(key)
+                gs_fields, objects = _decompose_key(key)
+                _insert_game_state(self._conn, chash, gs_fields, objects, info, replace_stats)
+        self._dirty.clear()
+
+    def __enter__(self) -> "LazyTranspositionDB":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self._conn.close()
 
 
 def merge_statistics(path: str, statistics: Dict[tuple, MCTSInfo]) -> None:

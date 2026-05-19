@@ -56,21 +56,38 @@ def do_run(db_path, C, max_turns, n_iters,*args):
     mtg_ai.transposition_db.merge_statistics(db_path,stats)
     mtg_ai.transposition_db.save_result(db_path, canonical_key(initial_game),node.game_state.turn_number)
 
-def run_batch(batch_size, db_path, C, max_turns, n_iters):
+def do_run_concurrent(db_path, C, max_turns, n_iters, *args):
+    random.seed()
+    initial_game = game = GameState([0])
+    node: mtg_ai.search.HistoryNode | None = None
+    build_deck(game,0,DECK, shuffle=True, hand_size=7)
+    while not mtg_ai.search.staff_victory(game):
+        with mtg_ai.transposition_db.LazyTranspositionDB(db_path) as stats:    
+            searcher = mtg_ai.search.MCTSSearcher(game,stats,mtg_ai.search.staff_victory,
+            C=C, max_turns=max_turns, n_iters=n_iters)
+            node = searcher.choose()
+            game = node.game_state
+            stats.merge()
+    mtg_ai.transposition_db.save_result(db_path, canonical_key(initial_game),node.game_state.turn_number)
+
+
+def run_batch(batch_size, db_path, C, max_turns, n_iters, concurrent=False):
+    runfn = do_run_concurrent if concurrent else do_run
     if batch_size > 1:
         pool = multiprocessing.Pool()
-        pool.map(functools.partial(do_run, db_path, C, max_turns,n_iters),range(batch_size-1))
+        pool.map(functools.partial(runfn, db_path, C, max_turns,n_iters),range(batch_size-1))
     do_run(db_path,C, max_turns,n_iters)
 
 
 if __name__ == "__main__":
     import argparse 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch_size", required=False, type=int, default=1)
-    parser.add_argument("--db", required=False, default=DB)
-    parser.add_argument("--C", required=False, default=1.2,type=float)
-    parser.add_argument("--max_turns", required=False, default=10, type=int)
-    parser.add_argument("--n_iters", required=False, default=500, type=int)
+    parser.add_argument("--batch_size", "-b", required=False, type=int, default=1)
+    parser.add_argument("--db", "-d", required=False, default=DB)
+    parser.add_argument("--C", "-C", required=False, default=1.2,type=float)
+    parser.add_argument("--max_turns", "-m", required=False, default=10, type=int)
+    parser.add_argument("--n_iters", "-n", required=False, default=500, type=int)
+    parser.add_argument("--concurrent", "-c")
 
     args = parser.parse_args()
 
