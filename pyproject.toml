@@ -15,5 +15,7 @@ include = ["mtg_ai*"]
 [dependency-groups]
 dev = [
     "pytest>=8.4.2",
+    "pytest-rerunfailures>=16.1",
+    "pytest-xdist>=3.8.0",
     "snakeviz>=2.2.2",
 ]

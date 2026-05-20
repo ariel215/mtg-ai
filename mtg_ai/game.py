@@ -87,7 +87,7 @@ class GameState:
         self.turn_number = turn_number
         self.triggers: List[Tuple[Event, 'TriggeredEffect']] = [] #: triggers waiting to go onto the stack
         self.summoning_sick: Set[int] = set() #: summoning sick cards
-        self.land_drops = 1 #: the number of lands that can still be played this turn
+        self.land_drops = land_drops  #: the number of lands that can still be played this turn
         self.active_player = 0
         self.active_effects: 'Set[ActiveEffect]' = set()
 
