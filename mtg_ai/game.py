@@ -17,6 +17,19 @@ class HashKind(Enum):
     FULL = 0
     VISIBLE = 1
 
+def _obj_key(obj, gs: 'GameState'):
+    zone = obj.zone
+    zone_class = type(zone).__name__ if zone is not None else ''
+    zone_owner = -1 if (zone is None or zone.owner is None) else zone.owner
+    zone_pos   = -1 if (zone is None or zone.position is None) else zone.position
+    tapped     = getattr(obj, 'tapped', False)
+    sick       = obj in gs.summoning_sick
+    counters   = tuple(sorted(
+        (k, v) for k, v in getattr(obj, 'counters', {}).items() if v != 0
+    ))
+    return (type(obj).__name__, zone_class, zone_owner, zone_pos,
+            tapped, sick, counters)
+
 
 def canonical_key(gs: 'GameState') -> tuple:
     """
@@ -42,21 +55,29 @@ def canonical_key(gs: 'GameState') -> tuple:
     mana_key = (m.white, m.blue, m.black, m.red, m.green,
                 m.gold, m.colorless, m.generic)
 
-    def obj_key(obj):
-        zone = obj.zone
-        zone_class = type(zone).__name__ if zone is not None else ''
-        zone_owner = -1 if (zone is None or zone.owner is None) else zone.owner
-        zone_pos   = -1 if (zone is None or zone.position is None) else zone.position
-        tapped     = getattr(obj, 'tapped', False)
-        sick       = obj in gs.summoning_sick
-        counters   = tuple(sorted(
-            (k, v) for k, v in getattr(obj, 'counters', {}).items() if v != 0
-        ))
-        return (type(obj).__name__, zone_class, zone_owner, zone_pos,
-                tapped, sick, counters)
 
-    objects_key = tuple(sorted(obj_key(obj) for obj in gs.objects))
-    return (gs.turn_number, gs.land_drops, gs.active_player, mana_key, objects_key)
+    objects_key = tuple(sorted(_obj_key(obj,gs) for obj in gs.objects))
+    return (gs.land_drops, gs.active_player, mana_key, objects_key)
+
+
+def info_set(gs: 'GameState') -> tuple:
+    """
+    Return a deterministic, UID-independent, hashable tuple that uniquely
+    identifies the logical game state up to hidden information
+    """
+
+    m = gs.mana_pool
+    mana_key = (m.white, m.blue, m.black, m.red, m.green,
+                m.gold, m.colorless, m.generic)
+    player = gs.active_player
+    
+    visible_zones = (zones.Hand(player), zones.Field(), zones.Grave(), zones.Stack())
+    objects_key = tuple(
+        sorted(_obj_key(obj,gs) for obj in gs.objects
+        if any(zone.contains(obj) for zone in visible_zones)
+    ))
+
+    return (gs.land_drops, gs.active_player, mana_key,objects_key)
 
 
 class GameState:

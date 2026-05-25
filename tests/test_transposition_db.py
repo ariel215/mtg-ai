@@ -6,6 +6,7 @@ and PASS after.
 """
 from re import M
 from mtg_ai.transposition_db import _canonical_hash, _ensure_schema
+import mtg_ai.transposition_db as transposition_db
 import stat
 import random
 from random import randint
@@ -311,6 +312,17 @@ def test_concurrent(tmp_path):
     with multiprocessing.Pool() as pool:
         results = pool.map(_insert, [tmp_path] * n_connections)
     assert all(results)
+
+#---------------------------------------------------------------------------
+# Test 9: check that loading a database with the old schema works as intended
+#----------------------------------------------------------------------------
+
+def test_old_schema_empty(tmp_path):
+    db = str(tmp_path / "old.db")
+    with sqlite3.Connection(db) as conn:
+        conn.executescript(transposition_db._OLD_SCHEMA)
+        _ensure_schema(conn)
+    assert transposition_db._SCHEMA is transposition_db._OLD_SCHEMA
 
 # ---------------------------------------------------------------------------
 # LazyTranspositionDB tests
