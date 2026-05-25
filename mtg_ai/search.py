@@ -141,6 +141,7 @@ class MCTSSearcher:
     def playout(self, state: HistoryNode, max_turns: int) -> float:
         logger.debug("Random playout")
         current = state.game_state
+        current  = current.take_action(actions.Shuffle(),{})
         while current.turn_number < max_turns:
             if self.condition(current):
                 logger.debug(f"Found victory by turn {current.turn_number}")

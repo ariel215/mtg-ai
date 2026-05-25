@@ -31,60 +31,8 @@ from mtg_ai.search import MCTSInfo
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-_OLD_SCHEMA = """
-PRAGMA journal_mode = WAL;
-PRAGMA foreign_keys = ON;
 
-CREATE TABLE IF NOT EXISTS game_states (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    canonical_hash BLOB    NOT NULL UNIQUE,
-    turn_number    INTEGER NOT NULL,
-    land_drops     INTEGER NOT NULL,
-    active_player  INTEGER NOT NULL,
-    mana_white     INTEGER NOT NULL DEFAULT 0,
-    mana_blue      INTEGER NOT NULL DEFAULT 0,
-    mana_black     INTEGER NOT NULL DEFAULT 0,
-    mana_red       INTEGER NOT NULL DEFAULT 0,
-    mana_green     INTEGER NOT NULL DEFAULT 0,
-    mana_gold      INTEGER NOT NULL DEFAULT 0,
-    mana_colorless INTEGER NOT NULL DEFAULT 0,
-    mana_generic   INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS game_objects (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    game_state_id  INTEGER NOT NULL REFERENCES game_states(id) ON DELETE CASCADE,
-    card_class     TEXT    NOT NULL,
-    zone_type      TEXT    NOT NULL,
-    zone_owner     INTEGER NOT NULL DEFAULT -1,
-    zone_position  INTEGER NOT NULL DEFAULT -1,
-    tapped         INTEGER NOT NULL DEFAULT 0,
-    summoning_sick INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE INDEX IF NOT EXISTS idx_game_objects_state ON game_objects(game_state_id);
-
-CREATE TABLE IF NOT EXISTS object_counters (
-    game_object_id INTEGER NOT NULL REFERENCES game_objects(id) ON DELETE CASCADE,
-    counter_type   TEXT    NOT NULL,
-    count          INTEGER NOT NULL,
-    PRIMARY KEY (game_object_id, counter_type)
-);
-
-CREATE TABLE IF NOT EXISTS mcts_stats (
-    game_state_id INTEGER PRIMARY KEY REFERENCES game_states(id) ON DELETE CASCADE,
-    value         REAL    NOT NULL DEFAULT 0.0,
-    visits        INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS mcts_results(
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    game_state_id INTEGER NOT NULL REFERENCES game_states(id) ON DELETE CASCADE,
-    final_turn    INTEGER NOT NULL
-);
-""" 
-
-_NEW_SCHEMA = """
+_SCHEMA = """
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
@@ -136,7 +84,6 @@ CREATE TABLE IF NOT EXISTS mcts_results(
 );
 """ 
 
-_SCHEMA = None
 
 # sqlite has a maximum placeholder size
 _BATCH_SIZE = 2**15-5
@@ -148,15 +95,6 @@ def _canonical_hash(key: tuple) -> bytes:
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
     # check which version of the schema we're using
-    global _SCHEMA
-    if _SCHEMA is None: 
-        (statement,) = conn.execute(
-            "SELECT sql FROM sqlite_schema WHERE name = 'game_states'"
-        ).fetchone()
-        if statement is not None and 'turn_number' in statement:
-            _SCHEMA = _OLD_SCHEMA
-        else:
-            _SCHEMA = _NEW_SCHEMA
     conn.executescript(_SCHEMA)
 
 
@@ -189,47 +127,10 @@ def _decompose_key(key: tuple) -> tuple:
     Returns:
         (gs_fields: dict, objects: list of dict)
     """
-    global _SCHEMA
-    if _SCHEMA is _OLD_SCHEMA:
+    if len(key) == 5:
         turn_number, land_drops, active_player, mana_key, objects_key = key
-    else: 
+    else:
         land_drops, active_player, mana_key, objects_key = key
-        turn_number = -1
-    
-    mw, mb_lu, mb_la, mr, mg, mgo, mc, mge = mana_key
-
-    gs_fields = {
-        'turn_number': turn_number,
-        'land_drops': land_drops,
-        'active_player': active_player,
-        'mana_white': mw,
-        'mana_blue': mb_lu,
-        'mana_black': mb_la,
-        'mana_red': mr,
-        'mana_green': mg,
-        'mana_gold': mgo,
-        'mana_colorless': mc,
-        'mana_generic': mge,
-    }
-
-    objects = []
-    for obj_tuple in objects_key:
-        class_name, zone_class, zone_owner, zone_pos, tapped, sick, counters = obj_tuple
-        objects.append({
-            'card_class': class_name,
-            'zone_type': zone_class,
-            'zone_owner': zone_owner,
-            'zone_position': zone_pos,
-            'tapped': int(tapped),
-            'summoning_sick': int(sick),
-            'counters': counters,   # tuple of (counter_type, count)
-        })
-
-    return gs_fields, objects
-
-
-def _decompose_info_set(key: tuple) -> tuple:
-    land_drops, active_player, mana_key, objects_key = key
     mw, mb_lu, mb_la, mr, mg, mgo, mc, mge = mana_key
 
     gs_fields = {
@@ -259,55 +160,10 @@ def _decompose_info_set(key: tuple) -> tuple:
         })
 
     return gs_fields, objects
+
 
 
 def _recompose_key(gs_row: sqlite3.Row,
-                   obj_rows: list[sqlite3.Row],
-                   counter_map: dict[int, list]) -> tuple:
-    """
-    Reconstruct a canonical_key tuple from DB rows.
-
-    counter_map maps game_object.id -> list of (counter_type, count).
-    """
-    mana_key = (
-        gs_row['mana_white'], gs_row['mana_blue'], gs_row['mana_black'],
-        gs_row['mana_red'], gs_row['mana_green'], gs_row['mana_gold'],
-        gs_row['mana_colorless'], gs_row['mana_generic'],
-    )
-
-    obj_tuples = []
-    for obj in obj_rows:
-        counters = tuple(sorted(counter_map.get(obj['id'], [])))
-        obj_tuple = (
-            obj['card_class'],
-            obj['zone_type'],
-            obj['zone_owner'],
-            obj['zone_position'],
-            bool(obj['tapped']),
-            bool(obj['summoning_sick']),
-            counters,
-        )
-        obj_tuples.append(obj_tuple)
-
-    objects_key = tuple(sorted(obj_tuples))
-    if _SCHEMA is _OLD_SCHEMA:
-        return (
-            gs_row['turn_number'],
-            gs_row['land_drops'],
-            gs_row['active_player'],
-            mana_key,
-            objects_key,
-        )
-    else:
-        return (
-            gs_row['land_drops'],
-            gs_row['active_player'],
-            mana_key,
-            objects_key,
-        )
-
-
-def _recompose_info_set(gs_row: sqlite3.Row,
                    obj_rows: list[sqlite3.Row],
                    counter_map: dict[int, list]) -> tuple:
     """
@@ -343,44 +199,29 @@ def _recompose_info_set(gs_row: sqlite3.Row,
         objects_key,
     )
 
+
 def _insert_game_state(conn: sqlite3.Connection,
                        chash: bytes,
                        gs_fields: dict,
                        objects: list,
                        info: MCTSInfo,
-                       replace_stats: bool,
-                       ntries: int = 5,
-                       timeout: float = 0.1) -> None:
+                       replace_stats: bool,) -> None:
     """
     Insert (or replace) a game state and its objects, then upsert mcts_stats.
 
     replace_stats=True  → overwrite existing value/visits (save semantics)
     replace_stats=False → accumulate existing value/visits (merge semantics)
     """
-    err = None
-    # Upsert game_states (structural data never changes for a given hash)
-    if _SCHEMA is _OLD_SCHEMA:
-        conn.execute("""
-            INSERT OR IGNORE INTO game_states
-                (canonical_hash, turn_number, land_drops, active_player,
-                mana_white, mana_blue, mana_black, mana_red, mana_green,
-                mana_gold, mana_colorless, mana_generic)
-            VALUES
-                (:hash, :turn_number, :land_drops, :active_player,
-                :mana_white, :mana_blue, :mana_black, :mana_red, :mana_green,
-                :mana_gold, :mana_colorless, :mana_generic)
-        """, {'hash': chash, **gs_fields})
-    else:
-                conn.execute("""
-            INSERT OR IGNORE INTO game_states
-                (canonical_hash, land_drops, active_player,
-                mana_white, mana_blue, mana_black, mana_red, mana_green,
-                mana_gold, mana_colorless, mana_generic)
-            VALUES
-                (:hash, :land_drops, :active_player,
-                :mana_white, :mana_blue, :mana_black, :mana_red, :mana_green,
-                :mana_gold, :mana_colorless, :mana_generic)
-        """, {'hash': chash, **gs_fields})
+    conn.execute("""
+        INSERT OR IGNORE INTO game_states
+            (canonical_hash, land_drops, active_player,
+            mana_white, mana_blue, mana_black, mana_red, mana_green,
+            mana_gold, mana_colorless, mana_generic)
+        VALUES
+            (:hash, :land_drops, :active_player,
+            :mana_white, :mana_blue, :mana_black, :mana_red, :mana_green,
+            :mana_gold, :mana_colorless, :mana_generic)
+    """, {'hash': chash, **gs_fields})
 
 
     with closing(conn.execute(

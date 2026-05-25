@@ -236,8 +236,7 @@ def test_save_overwrites(tmp_path):
 # Test 7: round-trip preserves the exact canonical key tuple structure
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize(["key"],[canonical_key,info])
-def test_roundtrip_preserves_canonical_key_structure(tmp_path,key):
+def test_roundtrip_preserves_canonical_key_structure(tmp_path):
     """
     The reconstructed key from the DB must be bit-for-bit identical to the
     original canonical_key() output, including counters, mana, zone fields.
@@ -313,16 +312,6 @@ def test_concurrent(tmp_path):
         results = pool.map(_insert, [tmp_path] * n_connections)
     assert all(results)
 
-#---------------------------------------------------------------------------
-# Test 9: check that loading a database with the old schema works as intended
-#----------------------------------------------------------------------------
-
-def test_old_schema_empty(tmp_path):
-    db = str(tmp_path / "old.db")
-    with sqlite3.Connection(db) as conn:
-        conn.executescript(transposition_db._OLD_SCHEMA)
-        _ensure_schema(conn)
-    assert transposition_db._SCHEMA is transposition_db._OLD_SCHEMA
 
 # ---------------------------------------------------------------------------
 # LazyTranspositionDB tests
@@ -448,22 +437,3 @@ def test_lazy_integration_with_mcts_searcher(tmp_path):
         assert s2.root.stats is not None
         assert s2.root.stats.visits > visits_after_s1
         lazy.flush()
-
-def _insert_lazy(db):
-    key = _random_key()
-    value = MCTSInfo(randint(1,4), randint(3,6))
-    with transposition_db.LazyTranspositionDB(db) as lazy:
-        lazy[key] = MCTSInfo(value=3.0, visits=7)
-        # Pass lazy directly to save_statistics via its items() method
-        transposition_db.save_statistics(db, lazy)  # type: ignore[arg-type]
-
-
-def test_lazy_items_concurrent(tmp_path):
-    """try and run LazyTranspositionDB from multiple processes simultaneously"""
-    n_connections = 2
-    db = str(tmp_path / "stats.db")
-    import multiprocessing
-    with multiprocessing.Pool() as pool:
-        results = pool.map(_insert_lazy, [db] * n_connections)
-    assert all(results)
-

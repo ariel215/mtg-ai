@@ -126,13 +126,6 @@ def test_different_mana_pool():
     assert canonical_key(g1) != canonical_key(g2)
 
 
-def test_different_turn_number():
-    gs, _ = fresh_state((decklist.Forest, zones.Field(0)))
-    g2 = gs.copy()
-    g2.turn_number += 1
-    assert canonical_key(gs) != canonical_key(g2)
-
-
 def test_different_land_drops():
     """Remaining land drops are part of game state and must affect the key."""
     gs, _ = fresh_state((decklist.Forest, zones.Field(0)))
