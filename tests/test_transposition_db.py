@@ -290,6 +290,26 @@ def test_integration_with_mcts_searcher(tmp_path):
     # Root was seeded, so visits include the pre-loaded count plus this run's
     assert s2.root.stats.visits > visits_after_s1
 
+def _insert(tmp_path):
+    db = str(tmp_path / "stats.db")
+    keys = [_random_key()[0] for _ in range(transposition_db._BATCH_SIZE * 2)]
+    stats = {
+        k: MCTSInfo(i,i)
+        for i,k in enumerate(keys)
+    }
+    assert len(stats) == len(keys)
+    transposition_db.save_statistics(db,stats)
+    loaded = transposition_db.load_statistics(db)
+    assert len(loaded) >= len(stats)
+    return True
+
+@pytest.mark.skip
+def test_concurrent(tmp_path):
+    n_connections = 6
+    import multiprocessing
+    with multiprocessing.Pool() as pool:
+        results = pool.map(_insert, [tmp_path] * n_connections)
+    assert all(results)
 
 # ---------------------------------------------------------------------------
 # LazyTranspositionDB tests
