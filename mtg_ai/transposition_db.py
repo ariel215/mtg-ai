@@ -211,72 +211,64 @@ def _insert_game_state(conn: sqlite3.Connection,
     replace_stats=False → accumulate existing value/visits (merge semantics)
     """
     err = None
-    for _ in range(ntries):
-        try:
-            # Upsert game_states (structural data never changes for a given hash)
-            conn.execute("""
-                INSERT OR IGNORE INTO game_states
-                    (canonical_hash, turn_number, land_drops, active_player,
-                    mana_white, mana_blue, mana_black, mana_red, mana_green,
-                    mana_gold, mana_colorless, mana_generic)
-                VALUES
-                    (:hash, :turn_number, :land_drops, :active_player,
-                    :mana_white, :mana_blue, :mana_black, :mana_red, :mana_green,
-                    :mana_gold, :mana_colorless, :mana_generic)
-            """, {'hash': chash, **gs_fields}).close()
+    # Upsert game_states (structural data never changes for a given hash)
+    conn.execute("""
+        INSERT OR IGNORE INTO game_states
+            (canonical_hash, turn_number, land_drops, active_player,
+            mana_white, mana_blue, mana_black, mana_red, mana_green,
+            mana_gold, mana_colorless, mana_generic)
+        VALUES
+            (:hash, :turn_number, :land_drops, :active_player,
+            :mana_white, :mana_blue, :mana_black, :mana_red, :mana_green,
+            :mana_gold, :mana_colorless, :mana_generic)
+    """, {'hash': chash, **gs_fields}).close()
 
-            with closing(conn.execute(
-                "SELECT id FROM game_states WHERE canonical_hash = ?", (chash,)
-            )) as cursor: 
-                gs_id  =cursor.fetchone()['id']
-            
-            # Only insert objects if this is a new state (they're structurally immutable)
-            with closing(conn.execute(
-                "SELECT COUNT(*) FROM game_objects WHERE game_state_id = ?", (gs_id,)
-            )) as cursor: 
-                existing_objs = cursor.fetchone()[0]
+    with closing(conn.execute(
+        "SELECT id FROM game_states WHERE canonical_hash = ?", (chash,)
+    )) as cursor: 
+        gs_id  =cursor.fetchone()['id']
+    
+    # Only insert objects if this is a new state (they're structurally immutable)
+    with closing(conn.execute(
+        "SELECT COUNT(*) FROM game_objects WHERE game_state_id = ?", (gs_id,)
+    )) as cursor: 
+        existing_objs = cursor.fetchone()[0]
 
-            if existing_objs == 0:
-                with closing(conn.cursor()) as cur:
-                    for obj in objects:
-                        cur.execute("""
-                            INSERT INTO game_objects
-                                (game_state_id, card_class, zone_type, zone_owner,
-                                zone_position, tapped, summoning_sick)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """, (gs_id, obj['card_class'], obj['zone_type'], obj['zone_owner'],
-                            obj['zone_position'], obj['tapped'], obj['summoning_sick']))
-                        obj_id = cur.lastrowid
-                        for counter_type, count in obj['counters']:
-                            cur.execute("""
-                                INSERT INTO object_counters (game_object_id, counter_type, count)
-                                VALUES (?, ?, ?)
-                            """, (obj_id, counter_type, count))
+    if existing_objs == 0:
+        with closing(conn.cursor()) as cur:
+            for obj in objects:
+                cur.execute("""
+                    INSERT INTO game_objects
+                        (game_state_id, card_class, zone_type, zone_owner,
+                        zone_position, tapped, summoning_sick)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (gs_id, obj['card_class'], obj['zone_type'], obj['zone_owner'],
+                    obj['zone_position'], obj['tapped'], obj['summoning_sick']))
+                obj_id = cur.lastrowid
+                for counter_type, count in obj['counters']:
+                    cur.execute("""
+                        INSERT INTO object_counters (game_object_id, counter_type, count)
+                        VALUES (?, ?, ?)
+                    """, (obj_id, counter_type, count))
 
-            # Upsert mcts_stats
-            if replace_stats:
-                conn.execute("""
-                    INSERT INTO mcts_stats (game_state_id, value, visits)
-                    VALUES (?, ?, ?)
-                    ON CONFLICT (game_state_id) DO UPDATE SET
-                        value  = excluded.value,
-                        visits = excluded.visits
-                """, (gs_id, info.value, info.visits)).close()
-            else:
-                conn.execute("""
-                    INSERT INTO mcts_stats (game_state_id, value, visits)
-                    VALUES (?, ?, ?)
-                    ON CONFLICT (game_state_id) DO UPDATE SET
-                        value  = mcts_stats.value  + excluded.value,
-                        visits = mcts_stats.visits + excluded.visits
-                """, (gs_id, info.value, info.visits)).close()
-            return
-        except sqlite3.DatabaseError as db_err:
-            err = db_err
-            sleep(timeout)
-            timeout *= 2
-    if err is not None:
-        raise err
+    # Upsert mcts_stats
+    if replace_stats:
+        conn.execute("""
+            INSERT INTO mcts_stats (game_state_id, value, visits)
+            VALUES (?, ?, ?)
+            ON CONFLICT (game_state_id) DO UPDATE SET
+                value  = excluded.value,
+                visits = excluded.visits
+        """, (gs_id, info.value, info.visits)).close()
+    else:
+        conn.execute("""
+            INSERT INTO mcts_stats (game_state_id, value, visits)
+            VALUES (?, ?, ?)
+            ON CONFLICT (game_state_id) DO UPDATE SET
+                value  = mcts_stats.value  + excluded.value,
+                visits = mcts_stats.visits + excluded.visits
+        """, (gs_id, info.value, info.visits)).close()
+    return
 
 
 
@@ -346,6 +338,7 @@ def load_result(path: str, game: tuple) -> int | None:
 def load_all_results(path: str) -> Dict[tuple, int]:
     with sqlite3.connect(database=path) as conn:
         conn.row_factory = sqlite3.Row
+        _ensure_schema(conn)
         game_results = [(row['game_state_id'],row['final_turn']) for row in 
             conn.execute("SELECT * FROM mcts_results").fetchall()
         ]

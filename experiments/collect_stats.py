@@ -1,3 +1,5 @@
+from _asyncio import Future
+from mtg_ai.transposition_db import LazyTranspositionDB
 from packaging.version import parse
 import functools
 import multiprocessing
@@ -8,6 +10,8 @@ import mtg_ai
 import os
 import random
 from mtg_ai.decklist import *
+import asyncio
+from concurrent.futures import ProcessPoolExecutor
 
 # Workflow: 
 # - randomize
@@ -39,44 +43,49 @@ CARDS = [
 
 DECK = [ cardtype for cardtype, i in CARDS for _ in range(i) ]
 
-
-
-def do_run(db_path, C, max_turns, n_iters,*args):
-    stats=  mtg_ai.transposition_db.load_statistics(db_path)
+def do_run(db_path, params,*args):
+    stats = get_stats(db_path)
     random.seed()
     initial_game = game = GameState([0])
     node = None
+    max_turns = params['max_turns']
     build_deck(game,0,DECK, shuffle=True, hand_size=7)
-    while not mtg_ai.search.staff_victory(game):
+    while not mtg_ai.search.staff_victory(game) and game.turn_number < max_turns:
         searcher = mtg_ai.search.MCTSSearcher(game,stats,mtg_ai.search.staff_victory,
-        C=C, max_turns=max_turns, n_iters=n_iters)
+        **params)
         node = searcher.choose()
         game = node.game_state
-
-    mtg_ai.transposition_db.merge_statistics(db_path,stats)
-    mtg_ai.transposition_db.save_result(db_path, canonical_key(initial_game),node.game_state.turn_number)
-
-def do_run_concurrent(db_path, C, max_turns, n_iters, *args):
-    random.seed()
-    initial_game = game = GameState([0])
-    node: mtg_ai.search.HistoryNode | None = None
-    build_deck(game,0,DECK, shuffle=True, hand_size=7)
-    while not mtg_ai.search.staff_victory(game):
-        with mtg_ai.transposition_db.LazyTranspositionDB(db_path) as stats:    
-            searcher = mtg_ai.search.MCTSSearcher(game,stats,mtg_ai.search.staff_victory,
-            C=C, max_turns=max_turns, n_iters=n_iters)
-            node = searcher.choose()
-            game = node.game_state
-            stats.merge()
-    mtg_ai.transposition_db.save_result(db_path, canonical_key(initial_game),node.game_state.turn_number)
+    stats = {k: v for k,v in stats.items()}
+    return (stats, canonical_key(initial_game), node.game_state.turn_number)
 
 
-def run_batch(batch_size, db_path, C, max_turns, n_iters, concurrent=False):
-    runfn = do_run_concurrent if concurrent else do_run
-    if batch_size > 1:
-        pool = multiprocessing.Pool()
-        pool.map(functools.partial(runfn, db_path, C, max_turns,n_iters),range(batch_size-1))
-    do_run(db_path,C, max_turns,n_iters)
+def save_results(db_path, stats, key, turn_no):
+    assert os.path.exists(os.path.dirname(db_path))
+    mtg_ai.transposition_db.merge_statistics(db_path,statistics=stats)
+    mtg_ai.transposition_db.save_result(db_path,key,turn_no)
+
+
+async def run_batch(batch_size, db_path, params):
+
+    with ProcessPoolExecutor() as executor:
+        loop = asyncio.get_running_loop()
+        tasks = [
+            loop.run_in_executor(executor,do_run, db_path, params)
+            for _ in range(batch_size)
+        ]
+        for task in asyncio.as_completed(tasks):
+            task_result = await task
+            save_results(db_path,*task_result)
+
+
+def get_stats(db_path) -> dict | LazyTranspositionDB:
+    if not os.path.exists(db_path):
+        return {}
+    size = os.stat(db_path).st_size
+    if size > 50*1e6:
+        return LazyTranspositionDB(db_path)
+    else:
+        return mtg_ai.transposition_db.load_statistics(db_path)
 
 
 if __name__ == "__main__":
@@ -87,8 +96,19 @@ if __name__ == "__main__":
     parser.add_argument("--C", "-C", required=False, default=1.2,type=float)
     parser.add_argument("--max_turns", "-m", required=False, default=10, type=int)
     parser.add_argument("--n_iters", "-n", required=False, default=500, type=int)
-    parser.add_argument("--concurrent", "-c")
 
     args = parser.parse_args()
+    db_path = os.path.expanduser(args.db)
+    db_dir = os.path.dirname(db_path)
+    if not os.path.exists(db_dir):
+        os.makedirs(db_dir)
 
-    run_batch(args.batch_size, args.db, args.C, args.max_turns, args.n_iters)
+    params = {
+        'C': args.C,
+        'max_turns': args.max_turns,
+        'n_iters': args.n_iters
+    }
+
+    asyncio.run(
+        run_batch(args.batch_size, db_path,params)
+    )

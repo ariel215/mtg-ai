@@ -46,12 +46,12 @@ class HistoryNode:
         return self.children
 
 
-    def to_record(self):
+    def to_record(self, key=canonical_key):
         if self.stats is None:
             stats = None
         else:
             stats = {'value': self.stats.value, 'visits': self.stats.visits}
-        gs = canonical_key(self.game_state)
+        gs = key(self.game_state)
         return {'game_state': gs, 'stats': stats}
 
 @dataclass
@@ -118,19 +118,20 @@ def bfs(initial: GameState, condition, timeout=int(1e6)) -> SearchResult:
 
 class MCTSSearcher:
     def __init__(self, initial_state: GameState, statistics: Dict[tuple, MCTSInfo], condition: Callable[[GameState],bool],
-        C: float, max_turns: int = 10, n_iters: int=1000):
+        C: float, max_turns: int = 10, n_iters: int=1000, key=canonical_key):
         self.root = HistoryNode(initial_state)
         self.stats = statistics
         self.condition = condition
         self.C = C
         self.max_turns = max_turns
         self.n_iters = n_iters
+        self.key = key
         
 
     def score(self, node: HistoryNode) -> float:
         info = node.stats
         if info is None:
-            node.stats = self.stats.get(canonical_key(node.game_state))
+            node.stats = self.stats.get(self.key(node.game_state))
             return 0.0
 
         value = info.value / info.visits
@@ -157,19 +158,20 @@ class MCTSSearcher:
         """Initialise node.stats from the transposition table for any known states."""
         for node in nodes:
             if node.stats is None:
-                key = canonical_key(node.game_state)
+                key = self.key(node.game_state)
                 if key in self.stats:
                     info = self.stats[key]
                     node.stats = MCTSInfo(value=info.value, visits=info.visits)
 
     def backpropogate(self, state: HistoryNode | None, value: float):
+        key = self.key
         while state:
             if state.stats is None:
-                state.stats = self.stats.get(canonical_key(state.game_state)) or MCTSInfo()
+                state.stats = self.stats.get(key(state.game_state)) or MCTSInfo()
             info = state.stats
             info.value += value
             info.visits += 1
-            self.stats[canonical_key(state.game_state)] = MCTSInfo(
+            self.stats[key(state.game_state)] = MCTSInfo(
                 value=info.value, visits=info.visits
             )
             state = state.parent
@@ -259,7 +261,7 @@ class MCTSSearcher:
         nodes = [self.root]
         while len(nodes) > 0:
             current = nodes.pop()
-            records.append(current.to_record())
+            records.append(current.to_record(self.key))
             nodes.extend(current.children)
         return records
     
