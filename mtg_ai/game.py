@@ -6,8 +6,8 @@ from .mana import Mana
 from . import getters
 
 if TYPE_CHECKING:
-    from actions import Trigger, Target
-    from cards import Card
+    from .actions import Trigger, Target
+    from .cards import Card
 
 Player = int
 GenericStackObject = TypeVar('GenericStackObject')
@@ -324,6 +324,7 @@ class Action:
 
     def register_target(self, target: 'Target'):
         self.targets.append(target)
+        return self
 
     def set_targets(self, game_state, *, targets=None, **_kwargs):
         if targets: 

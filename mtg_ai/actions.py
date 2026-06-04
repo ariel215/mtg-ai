@@ -8,7 +8,7 @@ import mtg_ai.getters as getters
 from mtg_ai.getters import Get
 
 if TYPE_CHECKING:
-    from cards import Card
+    from mtg_ai.cards import Card
 
 
 def possible_actions(game_state: GameState) -> List[Action]:
@@ -153,7 +153,7 @@ class TapSymbol(Action):
     
     def choices(self, game_state: GameState):
         card = game_state.get(self.card)
-        return [] if card.tapped or card in game_state.summoning_sick else [{}]
+        return [] if card.tapped or (card in game_state.summoning_sick and "haste" not in card.attrs.keywords) else [{}]
 
     def do(self, game_state):
         game_state.get(self.card).tapped = True
@@ -195,8 +195,6 @@ class ActivatedAbility(Action):
     def __init__(self, cost: Action, effect: Action,
                  uses_stack: bool = False):
         super().__init__()
-        # todo: change default for activated abilities to use stack
-        # once fully implemented
         self.cost = cost
         self.effect = effect
         self.uses_stack = uses_stack
@@ -210,6 +208,7 @@ class ActivatedAbility(Action):
         game_state = game_state.take_action(self.cost, costs_choice)
         if self.uses_stack: 
             new_ability = StackAbility(game_state=game_state, effect=self.effect)
+            self.effect.set_targets(game_state,**effects_choice)
             game_state.stack(new_ability)
         else:
             game_state = game_state.take_action(self.effect, effects_choice)
@@ -263,6 +262,7 @@ class CastSpell(Action):
             return [mana_choices | {"effect_choices":ch} for ch in effect_choices]
         else:
             return []
+            
 
     def do(self, game_state: GameState, mana: Mana, effect_choices=None):
         effect_choices = effect_choices or {}
@@ -333,6 +333,7 @@ class Shuffle(Action):
 
 class PayMana(Action):
     mana = Get()
+    
     def __init__(self, mana=None):
         super().__init__()
         self.mana = mana
@@ -396,6 +397,22 @@ class EndTurn(Action):
         game_state.land_drops = 1
         game_state.active_player += 1
         game_state.active_player %= len(game_state.players)
+
+class GiveKeyword(Action):
+
+    card = Get()
+
+    def __init__(self,card, keyword: str):
+        super().__init__()
+        self.card = card
+        self.keyword = keyword
+    
+    def choices(self, game_state: GameState):
+        return [{'card': self.card(game_state)}]
+
+    def do(self, game_state: GameState, card):
+        card: Card = game_state.get(card)
+        card.attrs.keywords.add(self.keyword)
 
 
 class Target(Action, GameObject):

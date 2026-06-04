@@ -1,3 +1,4 @@
+from mtg_ai.actions import Target
 from typing import Tuple, List
 import random
 from mtg_ai import actions, game, getters, zones, mana
@@ -22,6 +23,8 @@ import mtg_ai.getters as getters
 # [x] TrophyMage
 # [x] Staff
 # [x] Company
+# [] walking bulwark
+# [] wingmantle champion
 
 # [x] Forest
 # [x] Plains
@@ -411,6 +414,27 @@ class Staff(Card):
         # technically this card can do a bunch of stuff,
         # but the only thing we're interested in right now is 
         # "does it win the game" and we're going to hack that on separately
+
+class WalkingBulwark(Card):
+    def __init__(self, game_state, owner=None):
+        super().__init__(
+            "Walking Bulwark",
+            game_state,
+            cost=mana.Mana(generic=1),
+            types=(CardType.Artifact,CardType.Creature),
+            owner = owner
+        )
+        target = Target(game_state,
+            criteria=lambda obj: CardType.Creature in obj.attrs.types,
+            search_zone=zones.Field())
+
+        action = actions.GiveKeyword(target,"haste").register_target(target)
+        self.activated(
+            cost=actions.PayMana(mana.Mana(generic=2)) + target,
+            effect=action,
+            uses_stack=True
+        )
+
 
 class SteelWall(Card):
      def __init__(self, game_state, owner=None):
