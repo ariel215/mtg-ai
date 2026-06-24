@@ -185,7 +185,7 @@ def test_coco():
     deck = [decklist.Forest(g0) for _ in range(4)] + [decklist.Axebane(g0) for _ in range(2)]
     for i,card in enumerate(deck):
         card.zone = zones.Deck(0, i)
-    g0.mana_pool += mana.Mana(green=4)
+    g0.mana_pool = g0.mana_pool + mana.Mana(green=4)
     casting = actions.CastSpell(coco)
     choice = casting.get_choices(g0)[0]
     g1 = g0.take_action(casting, choice)
@@ -357,7 +357,7 @@ def test_target():
         hand_size=1)
     saruli.zone = zones.Field(0)
     steel.zone = zones.Field(0)
-    g0.mana_pool += mana.Mana(blue=1)
+    g0.mana_pool = g0.mana_pool + mana.Mana(blue=1)
     cast = actions.CastSpell(unsummon)
     cast_choices = cast.get_choices(g0)
 

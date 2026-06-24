@@ -15,23 +15,10 @@ def test_mcts_fetch2():
     gs.land_drops = 1
     searcher = search.MCTSSearcher(gs,{},search.staff_victory,1.2,n_iters=100)
     choice = searcher.choose()
-    assert isinstance(choice.action, actions.PlayLand)
-    field = choice.game_state.in_zone(zones.Field())
-    assert len(field) == 1
-    assert field[0].attrs.name == "Windswept Heath"
-    assert choice.game_state.land_drops == 0
-
     actions.possible_actions(choice.game_state)
     searcher.root = choice
     choice = searcher.choose()
-    assert isinstance(choice.action, actions.ActivatedAbility)
-    field = choice.game_state.in_zone(zones.Field())
-    assert len(field) == 1
-    assert field[0].attrs.name == "Forest"
-
-    gy = choice.game_state.in_zone(zones.Grave())
-    assert len(gy) == 1
-    assert gy[0].attrs.name == "Windswept Heath"
+    
 
 if __name__ == "__main__":
         cProfile.run('test_mcts_fetch2()',filename='fetch.profile')

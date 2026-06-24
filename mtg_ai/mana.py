@@ -1,3 +1,4 @@
+from functools import cached_property, cache
 from dataclasses import dataclass, asdict
 
 COLORS = ('white', 'blue', 'black', 'red', 'green', 'colorless')
@@ -38,30 +39,31 @@ class Mana:
                 mana.generic += int(field)
         return mana
 
-    def __iadd__(self, other):
+    def __add__(self, other):
+        result = self.copy()
         for field in asdict(self):
             current = getattr(self,field)
-            setattr(self,field,current + getattr(other, field))
-        return self
+            setattr(result,field,current + getattr(other, field))
+        return result
 
-    def __isub__(self, cost):
+    def __sub__(self, cost):
         """
         Use the mana in `self` to pay the mana cost `cost`
         """
-
+        result = self.copy()
         # step one: pay for colored costs with colored mana
-        for field in asdict(self):
+        for field in asdict(result):
             if field == 'generic':
                 continue
             if field == 'gold':
                 continue
-            current = getattr(self,field)
-            setattr(self,field,current - getattr(cost, field))
+            current = getattr(result,field)
+            setattr(result,field,current - getattr(cost, field))
 
         # step two: pay remaining colored costs with gold mana
         gold = cost.gold
         for field in COLORS:
-            if color_cost := getattr(self, field):
+            if color_cost := getattr(result, field):
                 amt = min(color_cost, gold)
                 setattr(self, field, color_cost-amt)
                 gold -= amt
@@ -70,33 +72,20 @@ class Mana:
         generic_cost = cost.generic
         # step four: pay generic costs, starting with colorless mana
         for field in list(reversed(COLORS)) + ['gold']:
-            value = getattr(self, field)
+            value = getattr(result, field)
             amt = min(generic_cost, value)
             setattr(self, field, value - amt)
             generic_cost -= amt 
         return self
-    
-    def __add__(self, other) -> 'Mana':
-        new = self.copy()
-        new += other
-        return new
-
-    def __sub__(self, other) -> 'Mana':
-        new = self.copy() 
-        new -= other
-        return new
-
-    def __imul__(self, amount):
-        for field in asdict(self):
-            setattr(self, field, getattr(self, field) * amount)
-        return self
 
     def __mul__(self, amount):
-        copy = self.copy() 
-        copy *= amount
-        return copy
+        result = self.copy()
+        for field in asdict(result):
+            setattr(result, field, getattr(result, field) * amount)
+        return result
 
     @property
+    @cache
     def mana_value(self):
         return sum(getattr(self, field)
          for field in

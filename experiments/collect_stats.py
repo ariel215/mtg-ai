@@ -23,7 +23,31 @@ DB = os.getenv("MTG_AI_DB") or "mtg_ai_db.sqlite"
 
 
 CARDS = [
-    (WindsweptHeath , 8),
+    (WindsweptHeath , 10),
+    (TempleGarden , 4),
+    (BreedingPool , 3),
+    (Forest, 2),
+    (Plains, 1),
+    (Island, 1),
+    (Saruli , 4),  
+    (WallOfRoots , 4),  
+    (SylvanCaryatid , 4),
+    (WallOfBlossoms, 4),
+    (Battlement , 4),
+    (Axebane, 4),
+    (TrophyMage, 2),
+    (Staff, 1),
+    (Duskwatch, 4),
+    (Arcades, 4),
+    (CollectedCompany,4)
+]
+
+DECK = [ cardtype for cardtype, i in CARDS for _ in range(i) ]
+
+assert len(DECK) == 60
+
+CARDS_BULWARK = [
+    (WindsweptHeath , 10),
     (TempleGarden , 3),
     (BreedingPool , 3),
     (Forest, 2),
@@ -32,16 +56,21 @@ CARDS = [
     (Saruli , 4),  
     (WallOfRoots , 4),  
     (SylvanCaryatid , 4),
+    (WallOfBlossoms, 3),
+    (WalkingBulwark, 3),
     (Battlement , 4),
     (Axebane, 4),
     (TrophyMage, 2),
     (Staff, 1),
-    (Duskwatch, 3),
-    (Arcades, 4),
+    (Duskwatch, 4),
+    (Arcades, 3),
     (CollectedCompany,4)
 ]
 
-DECK = [ cardtype for cardtype, i in CARDS for _ in range(i) ]
+DECK_BULWARK = [ cardtype for cardtype, i in CARDS for _ in range(i) ]
+
+assert len(DECK_BULWARK) == 60
+
 
 def do_run(db_path, params,*args):
     stats = get_stats(db_path)

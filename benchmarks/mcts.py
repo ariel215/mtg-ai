@@ -25,6 +25,17 @@ def do_run():
     searcher.choose()
 
 if __name__ == "__main__":
-    t = timeit.Timer('do_run()',globals=globals())
-    print(t.timeit(10))
-    # cProfile.run(statement='do_run()',filename='mcts.profile')
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-t','--time', required=False,action='store_true')
+    parser.add_argument('-p','--profile',required=False,action='store_true')
+    args = parser.parse_args()
+    if not args.time and not args.profile: 
+        raise argparse.ArgumentError('One of -t,-p required')
+    if args.time:
+        niters = 40
+        t = timeit.Timer('do_run()',globals=globals())
+        time = t.timeit(niters)
+        print(f"Average time: {time / niters} seconds")
+    else:
+        cProfile.run(statement='do_run()',filename='mcts.profile')

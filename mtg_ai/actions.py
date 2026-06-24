@@ -188,7 +188,7 @@ class AddMana(Action):
 
     def do(self, game_state):
         mana = self.mana(game_state)
-        game_state.mana_pool += mana
+        game_state.mana_pool = game_state.mana_pool + mana
 
 
 class ActivatedAbility(Action):
