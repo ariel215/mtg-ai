@@ -27,7 +27,7 @@ reference each other and not the objects in the previous state.
   ...
     def play(self, card):
       new_game = self.copy()
-      new_card = new_game.get(card)
+      new_card = new_game.objects[card.uid]
       new_card.move_to(Zone.Field)
       return new_game
 ```

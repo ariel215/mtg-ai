@@ -31,7 +31,7 @@ def test_possible_fetch():
     children = searcher.root.expand()
     assert len(children) == 1
     assert children[0].action == fetch.attrs.activated[0]
-    new_forest = children[0].game_state.get(forest)
+    new_forest = children[0].game_state.objects[forest.uid]
     assert zones.Field().contains(new_forest)
 
 

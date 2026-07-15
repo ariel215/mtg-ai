@@ -61,7 +61,7 @@ class Draw(Action):
         if not deck:
             return None # todo: game loss
 
-        card = game_state.get(deck.pop())
+        card = game_state.objects[deck.pop().uid]
         card.zone = zones.Hand(owner=player)
         return Event(self,game_state,card,None)
 
@@ -75,7 +75,7 @@ class Play(Action):
         return [{'card': self.params.get('card')}] # todo: does the card need to make choices as it enters?
     
     def do(self, game_state: GameState, card):
-        card = game_state.get(card)
+        card = game_state.objects[card.uid]
         card.zone = zones.Field(owner=card.zone.owner)
         if CardType.Creature in card.attrs.types:
             game_state.summoning_sick.add(card)
@@ -111,7 +111,7 @@ class MoveTo(Action):
             position = min([c.zone.position for c in in_zone if hasattr(c, "zone")], default=0)
             
             for other in in_zone:
-                other = game_state.get(other)
+                other = game_state.objects[card.uid]
                 old_zone = other.zone
                 other.zone = type(old_zone)(old_zone.owner, old_zone.position + 1)
 
@@ -120,7 +120,7 @@ class MoveTo(Action):
             assert zone.position is None
             position = zone.position
              
-        card = game_state.get(card)
+        card = game_state.objects[card.uid]
         card.zone = type(zone)(owner=zone.owner, position=position)
 
 
@@ -128,7 +128,7 @@ class Sacrifice(Action):
     def __init__(self, card):
         super().__init__()
         self.action = MoveTo(getters.Zone(zones.Grave(),getters.Controller(card)),
-        lambda gs: gs.get(card))
+        lambda gs: gs.objects[card.uid])
 
     def choices(self,game_state):
         card = self.action.card(game_state)
@@ -143,20 +143,20 @@ class Sacrifice(Action):
 
 
 class TapSymbol(Action):
-    def __init__(self, target):
+    def __init__(self, target: 'Card'):
         super().__init__()
         """
         Tap a permanent using the tap symbol.
         Target: the permanent to be tapped
         """
-        self.card = target
+        self.card = target.uid
     
     def choices(self, game_state: GameState):
-        card = game_state.get(self.card)
+        card = game_state.objects[self.card]
         return [] if card.tapped or (card in game_state.summoning_sick and "haste" not in card.attrs.keywords) else [{}]
 
     def do(self, game_state):
-        game_state.get(self.card).tapped = True
+        game_state.objects[self.card].tapped = True
         return Event(self,game_state)
 
 class Tap(Action):
@@ -171,7 +171,7 @@ class Tap(Action):
         ]
 
     def do(self, game_state,card):
-        card = game_state.get(card)
+        card = game_state.objects[card.uid]
         card.tapped = True
 
 
@@ -243,11 +243,11 @@ class StackTriggers(Action):
 class CastSpell(Action):
     def __init__(self,card):
         super().__init__()
-        self.card = card
+        self.card_id = card.uid
 
 
     def choices(self, game_state: GameState):
-        card = game_state.get(self.card)
+        card = game_state.objects[self.card_id]
         card_zone = card.zone
         if not isinstance(card_zone, zones.Hand):
             return []
@@ -266,7 +266,7 @@ class CastSpell(Action):
 
     def do(self, game_state: GameState, mana: Mana, effect_choices=None):
         effect_choices = effect_choices or {}
-        card = game_state.get(self.card)
+        card = game_state.objects[self.card_id]
         game_state.mana_pool -= mana
         game_state.stack(card)
         card.effect.set_targets(game_state, **effect_choices)
@@ -275,10 +275,10 @@ class CastSpell(Action):
 class PlayLand(Action):
     def __init__(self, card):
         super().__init__()
-        self.card = card
+        self.card_id = card.uid
     
     def choices(self, game_state):
-        card = game_state.get(self.card)
+        card = game_state.objects[self.card_id]
         if not zones.Hand().contains(card):
             return []
         if game_state.land_drops <= 0:
@@ -287,7 +287,8 @@ class PlayLand(Action):
             return [{}]
     
     def do(self, game_state):
-        game_state = game_state.take_action(Play(self.card), {})
+        card = game_state.objects[self.card_id]
+        game_state = game_state.take_action(Play(card), {})
         game_state.land_drops -= 1
         return Event(self, game_state)
 
@@ -353,17 +354,17 @@ class AddCounter(Action):
     def __init__(self, card, counter, zone=zones.Any()):
         super().__init__()
         self.counter = counter
-        self.card = card
+        self.card_id = card.uid
         self.zone = zone
 
     def choices(self,game_state):
-        if self.zone.contains(game_state.get(self.card)):
+        if self.zone.contains(game_state.objects[self.card_id]):
             return [{}]
         else:
             return []
     
     def do(self,game_state):
-        card = game_state.get(self.card)
+        card = game_state.objects[self.card_id]
         card.counters[self.counter] += 1
 
 class ResolveStack(Action):
@@ -391,7 +392,7 @@ class EndTurn(Action):
     def do(self,game_state: GameState):
         game_state.mana_pool = Mana()
         for card in game_state.in_zone(zones.Field()):
-            game_state.get(card).tapped = False
+            game_state.objects[card.uid].tapped = False
         game_state.summoning_sick.clear()
         game_state.turn_number += 1
         game_state.land_drops = 1
@@ -411,7 +412,7 @@ class GiveKeyword(Action):
         return [{'card': self.card(game_state)}]
 
     def do(self, game_state: GameState, card):
-        card: Card = game_state.get(card)
+        card: Card = game_state.objects[card.uid]
         card.attrs.keywords.add(self.keyword)
 
 
@@ -432,7 +433,7 @@ class Target(Action, GameObject):
         self.search_zone = search_zone
 
     def __call__(self, game_state: GameState):
-        obj = game_state.get(self)
+        obj = game_state.objects[self.uid]
         return obj.params["target"]
 
     def choices(self, game_state):

@@ -43,7 +43,7 @@ class Controller:
         self.card = card
 
     def __call__(self, game_state):
-        return game_state.get(self.card(game_state)).controller
+        return game_state.objects[self.card(game_state).uid].controller
 
 class Zone:
     owner = Get()

@@ -155,7 +155,7 @@ def test_counters_affect_key():
     [f] = gs.objects
 
     g2 = gs.copy()
-    g2.get(f)._state.counters['plus_one'] = 1
+    g2.objects[f.uid]._state.counters['plus_one'] = 1
 
     assert canonical_key(gs) != canonical_key(g2)
 
@@ -169,7 +169,7 @@ def test_zero_counters_equal_to_no_counters():
     [f] = gs.objects
 
     g2 = gs.copy()
-    _ = g2.get(f)._state.counters['plus_one']  # triggers defaultdict insertion at 0
+    _ = g2.objects[f.uid]._state.counters['plus_one']  # triggers defaultdict insertion at 0
 
     assert canonical_key(gs) == canonical_key(g2)
 

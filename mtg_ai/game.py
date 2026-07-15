@@ -1,6 +1,6 @@
 from enum import Enum
 from itertools import chain, product
-from typing import TypeVar, Optional, List, Dict, Any, TYPE_CHECKING, Set, Callable, Tuple
+from typing import TypeVar, Optional, List, Dict, Any, TYPE_CHECKING, Set, Callable, Tuple, NewType
 from . import zones
 from .mana import Mana
 from . import getters
@@ -99,7 +99,6 @@ class GameState:
                 mana_pool: Optional['Mana']=None, 
                 turn_number:int=1,
                 land_drops: int = 1,
-                active_player: Player | None = None,
                 hash_kind:HashKind = HashKind.FULL):
         self.hash_kind = hash_kind
         self.objects = []
@@ -117,7 +116,7 @@ class GameState:
         new_game_state = GameState(self.players,mana_pool=self.mana_pool.copy(), turn_number=self.turn_number,
             land_drops=self.land_drops, hash_kind=self.hash_kind, active_player=self.active_player)
         new_game_state.objects = [obj.copy(new_game_state) for obj in self.objects]
-        new_game_state.summoning_sick = {new_game_state.get(card) for card in self.summoning_sick}
+        new_game_state.summoning_sick = {new_game_state.objects[card.uid] for card in self.summoning_sick}
         new_game_state.triggers = self.triggers.copy()
         new_game_state.active_effects = self.active_effects.copy()
         return new_game_state
@@ -201,6 +200,8 @@ class GameState:
     def active_statics(self) -> List['StaticEffect']:
         return [active.effect for active in self.active_effects if active.is_static]
 
+UID = NewType('UID', int)
+
 class GameObject:
     """
     Base class for every object that can change between game states, and
@@ -211,10 +212,10 @@ class GameObject:
     def __init__(self, game_state: GameState, uid: Optional[int]=None):
         self.game_state = game_state
         if uid is None:
-            self.uid = len(game_state.objects)
+            self.uid = UID(len(game_state.objects))
             game_state.objects.append(self)
         else:
-            self.uid = uid
+            self.uid = UID(uid)
             game_state.objects[uid] = self
         self._zone : Optional[zones.Zone] = None
     
@@ -296,7 +297,7 @@ class Action:
         
         """
 
-        targets: List['Target'] = [game_state.get(t) for t in self.targets]
+        targets: List['Target'] = [game_state.objects[t.uid] for t in self.targets]
         not_yet_set: List['Target'] = [t for t in targets if not t.is_set]
         if not_yet_set:
             target_choices = [target.choices(game_state) for target in not_yet_set]
@@ -328,13 +329,13 @@ class Action:
 
     def set_targets(self, game_state, *, targets=None, **_kwargs):
         if targets: 
-            locals = [game_state.get(target) for target in self.targets]
+            locals = [game_state.objects[target.uid] for target in self.targets]
             for (local, value) in zip(locals, targets):
                 local.set(value['target'])
 
     def unset_targets(self, game_state):
         for target in self.targets:
-            game_state.get(target).unset()
+            game_state.objects[target.uid].unset()
 
     def __add__(self, other: 'Action') -> 'And':
         return And(self, other)
@@ -503,11 +504,11 @@ class StaticAbility:
         self.on_move(source.game_state)
 
     def is_active(self, game_state) -> bool:
-        card = game_state.get(self.active_effect.source)
+        card = game_state.objects[self.active_effect.source]
         return self.active_zone.contains(card)
 
     def on_move(self, game_state: GameState):
-        card = game_state.get(self.active_effect.source)
+        card = game_state.objects[self.active_effect.source.uid]
         if self.active_zone.contains(card):
             game_state.active_effects.add(self.active_effect)
         elif self.active_effect in game_state.active_effects:

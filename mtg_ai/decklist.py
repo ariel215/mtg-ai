@@ -262,7 +262,7 @@ class Arcades(Card):
         )
         def arc_triggers_if(event):
             gs = event.game_state
-            arc_here = gs.get(self)
+            arc_here = gs.objects[self.uid]
             if not isinstance(arc_here.zone, zones.Field):
                 return False
             if arc_here.zone.owner != event.source.zone.owner:
