@@ -1,3 +1,4 @@
+from mtg_ai.zones import Zone, Grave
 from enum import Enum
 from itertools import chain, product
 from typing import TypeVar, Optional, List, Dict, Any, TYPE_CHECKING, Set, Callable, Tuple, NewType
@@ -92,8 +93,8 @@ class GameState:
     this produces a new GameState with those changes.
     """
 
-    __slots__ = ('hash_kind','objects','players', 'mana_pool','turn_number','triggers','summoning_sick', 
-                 'land_drops', 'active_player', 'active_effects')
+    __slots__ = ('hash_kind','objects', 'players', 'mana_pool','turn_number','triggers','summoning_sick', 
+                 'land_drops', 'active_player', 'active_effects', '_zones')
 
     def __init__(self,players: List[Player], *, 
                 mana_pool: Optional['Mana']=None, 
@@ -110,16 +111,28 @@ class GameState:
         self.land_drops = land_drops  #: the number of lands that can still be played this turn
         self.active_player = 0
         self.active_effects: 'Set[ActiveEffect]' = set()
+        self._zones = {}
 
 
     def copy(self) -> 'GameState':
         new_game_state = GameState(self.players,mana_pool=self.mana_pool.copy(), turn_number=self.turn_number,
-            land_drops=self.land_drops, hash_kind=self.hash_kind, active_player=self.active_player)
-        new_game_state.objects = [obj.copy(new_game_state) for obj in self.objects]
-        new_game_state.summoning_sick = {new_game_state.objects[card.uid] for card in self.summoning_sick}
+            land_drops=self.land_drops, hash_kind=self.hash_kind)
+        new_game_state.objects = [card for card in self.objects]
+        new_game_state.summoning_sick = {card for card in self.summoning_sick}
         new_game_state.triggers = self.triggers.copy()
         new_game_state.active_effects = self.active_effects.copy()
         return new_game_state
+
+    def update_obj(self, obj_id: int) -> 'GameObject':
+        obj = self.objects[obj_id]
+        new_obj = obj.copy(self)
+        new_obj.uid = obj_id
+        if obj in self.summoning_sick:
+            self.summoning_sick.discard(obj)
+            self.summoning_sick.add(new_obj)
+        self.objects[obj_id] = new_obj
+        self.objects.pop()
+        return new_obj
 
     def in_zone(self, zone: zones.Zone)->List['GameObject']:
         return sorted([c for c in self.objects if zone.contains(c)],
@@ -329,7 +342,7 @@ class Action:
 
     def set_targets(self, game_state, *, targets=None, **_kwargs):
         if targets: 
-            locals = [game_state.objects[target.uid] for target in self.targets]
+            locals = [game_state.update_obj(target.uid) for target in self.targets]
             for (local, value) in zip(locals, targets):
                 local.set(value['target'])
 

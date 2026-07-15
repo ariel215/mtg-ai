@@ -6,16 +6,18 @@ across processes.
 These are TDD / contract tests. canonical_key is expected to be importable
 from mtg_ai.game.
 """
+from typing import List, Tuple
+from mtg_ai.cards import Card
 import pytest
 from mtg_ai import game, actions, zones, mana, decklist
-from mtg_ai.game import canonical_key
+from mtg_ai.game import canonical_key, GameState
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def fresh_state(*specs):
+def fresh_state(*specs) -> Tuple[GameState, List[Card]]:
     """Build a GameState. Each spec is (CardClass, zone_instance)."""
     gs = game.GameState([0])
     cards = []
@@ -155,6 +157,7 @@ def test_counters_affect_key():
     [f] = gs.objects
 
     g2 = gs.copy()
+    g2.update_obj(f.uid)
     g2.objects[f.uid]._state.counters['plus_one'] = 1
 
     assert canonical_key(gs) != canonical_key(g2)

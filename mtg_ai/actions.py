@@ -1,3 +1,4 @@
+from functools import lru_cache
 from typing import List, TYPE_CHECKING, Callable
 from mtg_ai.game import GameState, Action, ChoiceSet, Event, StackAbility, CardType, StaticEffect, \
     GameObject
@@ -29,12 +30,9 @@ def possible_actions(game_state: GameState) -> List[Action]:
     actions += field_abilities
     if len(game_state.in_zone(zones.Stack())) > 0:
         actions.append(ResolveStack())
-    return list(
-        filter(
-            lambda action: len(action.get_choices(game_state)) > 0, 
-             actions
-        )
-    )
+    return [
+        act for act in actions if len(act.get_choices(game_state)) > 0
+    ]
 
 
 class Draw(Action):
@@ -61,7 +59,7 @@ class Draw(Action):
         if not deck:
             return None # todo: game loss
 
-        card = game_state.objects[deck.pop().uid]
+        card = game_state.update_obj(deck.pop().uid)
         card.zone = zones.Hand(owner=player)
         return Event(self,game_state,card,None)
 
@@ -74,12 +72,12 @@ class Play(Action):
     def choices(self, _game_state):
         return [{'card': self.params.get('card')}] # todo: does the card need to make choices as it enters?
     
-    def do(self, game_state: GameState, card):
-        card = game_state.objects[card.uid]
-        card.zone = zones.Field(owner=card.zone.owner)
-        if CardType.Creature in card.attrs.types:
-            game_state.summoning_sick.add(card)
-        return Event(self, game_state, source=card,cause=card)
+    def do(self, game_state: GameState, card: 'Card'):
+        new_card: Card = game_state.update_obj(card.uid)
+        new_card.zone = zones.Field(owner=new_card.zone.owner)
+        if CardType.Creature in new_card.attrs.types:
+            game_state.summoning_sick.add(new_card)
+        return Event(self, game_state, source=new_card,cause=new_card)
 
 class MoveTo(Action):
     zone = Get()
@@ -111,7 +109,7 @@ class MoveTo(Action):
             position = min([c.zone.position for c in in_zone if hasattr(c, "zone")], default=0)
             
             for other in in_zone:
-                other = game_state.objects[card.uid]
+                other = game_state.update_obj(other.uid)
                 old_zone = other.zone
                 other.zone = type(old_zone)(old_zone.owner, old_zone.position + 1)
 
@@ -120,7 +118,7 @@ class MoveTo(Action):
             assert zone.position is None
             position = zone.position
              
-        card = game_state.objects[card.uid]
+        card = game_state.update_obj(card.uid)
         card.zone = type(zone)(owner=zone.owner, position=position)
 
 
@@ -156,7 +154,7 @@ class TapSymbol(Action):
         return [] if card.tapped or (card in game_state.summoning_sick and "haste" not in card.attrs.keywords) else [{}]
 
     def do(self, game_state):
-        game_state.objects[self.card].tapped = True
+        game_state.update_obj(self.card).tapped = True
         return Event(self,game_state)
 
 class Tap(Action):
@@ -171,8 +169,8 @@ class Tap(Action):
         ]
 
     def do(self, game_state,card):
-        card = game_state.objects[card.uid]
-        card.tapped = True
+        new_card = game_state.update_obj(card.uid)
+        new_card.tapped = True
 
 
 class AddMana(Action):
@@ -266,7 +264,7 @@ class CastSpell(Action):
 
     def do(self, game_state: GameState, mana: Mana, effect_choices=None):
         effect_choices = effect_choices or {}
-        card = game_state.objects[self.card_id]
+        card = game_state.update_obj(self.card_id)
         game_state.mana_pool -= mana
         game_state.stack(card)
         card.effect.set_targets(game_state, **effect_choices)
@@ -392,7 +390,8 @@ class EndTurn(Action):
     def do(self,game_state: GameState):
         game_state.mana_pool = Mana()
         for card in game_state.in_zone(zones.Field()):
-            game_state.objects[card.uid].tapped = False
+            new_card = game_state.update_obj(card.uid)
+            new_card.tapped = False
         game_state.summoning_sick.clear()
         game_state.turn_number += 1
         game_state.land_drops = 1
@@ -412,7 +411,7 @@ class GiveKeyword(Action):
         return [{'card': self.card(game_state)}]
 
     def do(self, game_state: GameState, card):
-        card: Card = game_state.objects[card.uid]
+        card: Card = game_state.update_obj(card.uid)
         card.attrs.keywords.add(self.keyword)
 
 

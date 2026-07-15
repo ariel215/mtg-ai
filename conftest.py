@@ -9,3 +9,6 @@ def pytest_addoption(parser):
         default=False,
         help="Run slow tests",
 )
+
+import random
+random.seed(0)

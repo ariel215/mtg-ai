@@ -20,6 +20,7 @@ def test_forest():
     assert len(g0.objects) == 3
     assert len(g1.objects) == 3
     assert isinstance(g1.get(f1).zone, zones.Field)
+    assert g1.get(f1) is not g0.get(f1)
     choices = t_add_g.get_choices(g1)
     assert choices
     g2 = g1.take_action(t_add_g, choices[0])    

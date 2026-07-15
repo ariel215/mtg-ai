@@ -1,7 +1,9 @@
+from itertools import chain
 from functools import cached_property, cache
 from dataclasses import dataclass, asdict
 
 COLORS = ('white', 'blue', 'black', 'red', 'green', 'colorless')
+FIELDS = ('white', 'blue', 'black', 'red', 'green', 'gold', 'colorless','generic')
 
 @dataclass(unsafe_hash=True,slots=True)
 class Mana:
@@ -15,7 +17,7 @@ class Mana:
     generic: int = 0
 
     def __str__(self):
-        return f"Mana({','.join(f'{k}={v}' for k,v in asdict(self).items() if v)})"
+        return f"Mana({','.join(f'{k}={v}' for k,v in [(field,getattr(self,field)) for field in FIELDS] if v)})"
 
     def __repr__(self):
         return str(self)
@@ -41,7 +43,7 @@ class Mana:
 
     def __add__(self, other):
         result = self.copy()
-        for field in asdict(self):
+        for field in FIELDS:
             current = getattr(self,field)
             setattr(result,field,current + getattr(other, field))
         return result
@@ -52,11 +54,7 @@ class Mana:
         """
         result = self.copy()
         # step one: pay for colored costs with colored mana
-        for field in asdict(result):
-            if field == 'generic':
-                continue
-            if field == 'gold':
-                continue
+        for field in COLORS:
             current = getattr(result,field)
             setattr(result,field,current - getattr(cost, field))
 
@@ -80,7 +78,7 @@ class Mana:
 
     def __mul__(self, amount):
         result = self.copy()
-        for field in asdict(result):
+        for field in FIELDS:
             setattr(result, field, getattr(result, field) * amount)
         return result
 
@@ -88,8 +86,7 @@ class Mana:
     @cache
     def mana_value(self):
         return sum(getattr(self, field)
-         for field in
-         asdict(self)
+         for field in FIELDS
      )
 
     def __eq__(self, other):
@@ -98,7 +95,7 @@ class Mana:
 
         return all(
             getattr(self, field) == getattr(other, field)
-             for field in asdict(self)
+             for field in chain(COLORS,('gold','colorless','generic'))
         )
 
     def can_pay(self, other)->bool:
@@ -122,5 +119,5 @@ class Mana:
         return self.mana_value >= other.mana_value        
 
     def copy(self):
-        return Mana(**asdict(self))
+        return Mana(self.white, self.blue,self.black,self.red,self.green,self.gold,self.colorless,self.generic)
     
