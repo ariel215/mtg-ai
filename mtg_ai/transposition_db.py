@@ -11,7 +11,6 @@ This module provides three operations:
 Schema follows the design in .notes/SERIALIZATION.md (subset: no mcts_edges or
 pending_triggers, which are out of scope for the transposition table).
 """
-from typing_extensions import Never
 from time import sleep
 
 from contextlib import closing

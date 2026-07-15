@@ -6,7 +6,7 @@ from tqdm import trange
 from collections.abc import Iterable
 import collections
 from dataclasses import dataclass,field
-from typing import List, Any, Self, Dict, Callable, Tuple, Optional, TypeVar
+from typing import List, Any, Self, Dict, Callable, Tuple, Optional, TypeVar, Set
 from mtg_ai import actions, decklist, getters, zones
 from mtg_ai.game import GameState, Action, canonical_key
 import logging
@@ -126,7 +126,7 @@ class MCTSSearcher:
         self.max_turns = max_turns
         self.n_iters = n_iters
         self.key = key
-        
+
 
     def score(self, node: HistoryNode) -> float:
         info = node.stats
@@ -177,59 +177,19 @@ class MCTSSearcher:
             )
             state = state.parent
 
-    def explore_node(self, node: HistoryNode):
-        current = node
-        while not self.condition(current.game_state):
-            if current.game_state.turn_number > self.max_turns:
-                value = 0
-                break
+    def select_node(self)->HistoryNode:
+        current = self.root
+        while current.stats is not None:
             children = current.expand()
             unexplored = [child for child in children if child.stats is None]
             if unexplored:
-                current = random.choice(children)
-                value = self.playout(current,self.max_turns - current.game_state.turn_number)
-                break
-            else:
-                scores = [self.score(child) for child in children]
-                def key(i_s):
-                    return i_s[1]
-                i,_ = max(enumerate(scores, ), key=key)
-                current = children[i]
-        else:
-            value = 1.0 / current.game_state.turn_number
-        self.backpropogate(current, value)
-        assert current.stats is not None
-        assert node.stats is not None
-
-    def explore(self) -> List[HistoryNode]:
-        """
-        Run an iteration of MCTS to compute the best next move.
-        """
-        children = self.root.expand()
-        self._seed_from_table([self.root] + children)
-
-        # Force-explore any child not yet known; backpropagate also sets root.stats
-        for child in children:
-            if child.stats is None:
-                self.explore_node(child)
-
-        # Edge case: all children were seeded but root.stats still None
-        if self.root.stats is None:
-            self.explore_node(children[0])
-
-        assert all(child.stats is not None for child in children)
-
-        def key(i_s):
-            return i_s[1]
-
-        for _ in range(self.n_iters):
+                return random.choice(unexplored)
+            
             scores = [self.score(child) for child in children]
-            i,_ = max(enumerate(scores, ), key=key)
-            self.explore_node(children[i])
-
-        assert all(child.stats is not None for child in children)
-        return children
-
+            
+            child, _  = max(zip(children,scores), key = lambda pair: pair[1])
+            current = child
+        return current
 
     def choose(self) -> HistoryNode:
         """
@@ -240,14 +200,13 @@ class MCTSSearcher:
         visited the most times. Exception: we always prefer not ending the turn
         to ending the turn.
         """
-        children = self.root.expand()
+        for _ in range(self.n_iters):
+            node = self.select_node()
+            value = self.playout(node, self.max_turns)
+            self.backpropogate(node, value)
+        children = self.root.children
         logger.debug("children: %s", children)
-        if len(children) == 1:
-            return children[0]
-        new_children = self.explore()
-        assert len(children) == len(new_children)
-        assert new_children == children
-        nvisits = [(child,child.stats.visits) for child in new_children]
+        nvisits = [(child,child.stats.visits) for child in children]
         if len(nvisits) > 1:
             nvisits = [pair for pair in nvisits if pair[0].game_state is not END_TURN]
         choice, n= max(nvisits, key=lambda p: p[1])

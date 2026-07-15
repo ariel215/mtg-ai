@@ -104,7 +104,7 @@ def test_mcts_short():
          decklist.Axebane, decklist.WallOfOmens, decklist.Staff, decklist.Forest],
         hand_size=5,
     )
-    searcher = search.MCTSSearcher(gs,{},search.staff_victory,1.2,n_iters=1)
+    searcher = search.MCTSSearcher(gs,{},search.staff_victory,1.2,n_iters=3)
     searcher.choose()
 
 

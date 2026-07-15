@@ -41,7 +41,7 @@ def test_statistics_populated_after_explore():
     gs = _simple_state()
     statistics = {}
     searcher = MCTSSearcher(gs, statistics, _never, C=1.2, n_iters=5)
-    searcher.explore()
+    searcher.choose()
     assert len(statistics) > 0
 
 
@@ -54,7 +54,7 @@ def test_statistics_keys_are_canonical_tuples():
     gs = _simple_state()
     statistics = {}
     searcher = MCTSSearcher(gs, statistics, _never, C=1.2, n_iters=5)
-    searcher.explore()
+    searcher.choose()
     assert len(statistics) > 0, "statistics must be populated (prerequisite)"
     for key in statistics:
         assert isinstance(key, tuple), f"expected tuple key, got {type(key)}"
@@ -70,7 +70,7 @@ def test_root_canonical_key_in_statistics(key):
     gs = _simple_state()
     statistics = {}
     searcher = MCTSSearcher(gs, statistics, _never, C=1.2, n_iters=5,key=key)
-    searcher.explore()
+    searcher.choose()
     assert key(gs) in statistics
 
 # ---------------------------------------------------------------------------
@@ -88,7 +88,7 @@ def test_pre_seeded_stats_used_by_root():
     pre_seeded_visits = 100
     statistics = {key: MCTSInfo(value=1.0, visits=pre_seeded_visits)}
     searcher = MCTSSearcher(gs, statistics, _never, C=1.2, n_iters=5)
-    searcher.explore()
+    searcher.choose()
     assert searcher.root.stats is not None
     assert searcher.root.stats.visits >= pre_seeded_visits
 
@@ -109,7 +109,7 @@ def test_shared_statistics_accumulates_across_searchers(key_fn):
     statistics = {}
 
     searcher1 = MCTSSearcher(gs1, statistics, _never, C=1.2, n_iters=5,key=key_fn)
-    searcher1.explore()
+    searcher1.choose()
 
     key = key_fn(gs1)
     assert key in statistics, "searcher1 must populate statistics (prerequisite)"
@@ -120,6 +120,6 @@ def test_shared_statistics_accumulates_across_searchers(key_fn):
     assert key_fn(gs2) == key, "gs2 must be logically identical to gs1"
 
     searcher2 = MCTSSearcher(gs2, statistics, _never, C=1.2, n_iters=5,key=key_fn)
-    searcher2.explore()
+    searcher2.choose()
 
     assert statistics[key].visits > visits_after_1

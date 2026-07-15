@@ -273,7 +273,7 @@ def test_integration_with_mcts_searcher(tmp_path):
     gs1 = build_state()
     stats1 = {}
     s1 = MCTSSearcher(gs1, stats1, _never, C=1.2, n_iters=5)
-    s1.explore()
+    s1.choose()
     visits_after_s1 = s1.root.stats.visits
 
     # Persist
@@ -286,7 +286,7 @@ def test_integration_with_mcts_searcher(tmp_path):
     # Run searcher2 — it starts with prior knowledge
     gs2 = build_state()
     s2 = MCTSSearcher(gs2, stats2, _never, C=1.2, n_iters=5)
-    s2.explore()
+    s2.choose()
 
     # Root was seeded, so visits include the pre-loaded count plus this run's
     assert s2.root.stats.visits > visits_after_s1
@@ -424,7 +424,7 @@ def test_lazy_integration_with_mcts_searcher(tmp_path):
     gs1 = build_state()
     stats1: dict = {}
     s1 = MCTSSearcher(gs1, stats1, _never, C=1.2, n_iters=5)
-    s1.explore()
+    s1.choose()
     assert s1.root.stats is not None
     visits_after_s1 = s1.root.stats.visits
     transposition_db.save_statistics(db, stats1)
@@ -433,7 +433,7 @@ def test_lazy_integration_with_mcts_searcher(tmp_path):
     gs2 = build_state()
     with transposition_db.LazyTranspositionDB(db) as lazy:
         s2 = MCTSSearcher(gs2, lazy, _never, C=1.2, n_iters=5)  # type: ignore[arg-type]
-        s2.explore()
+        s2.choose()
         assert s2.root.stats is not None
         assert s2.root.stats.visits > visits_after_s1
         lazy.flush()
