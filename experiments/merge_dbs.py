@@ -2,7 +2,7 @@ from mtg_ai.transposition_db import merge_statistics, load_statistics, load_all_
 
 def copy_into(src: str, dst: str):
     stats = load_statistics(src)
-    results = load_all_results(src, *list(stats.keys()))
+    results = load_all_results(src)
     merge_statistics(dst, stats)
     for (game,result) in results.items():
         save_result(dst,game,result)

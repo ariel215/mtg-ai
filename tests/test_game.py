@@ -1,5 +1,5 @@
 from mtg_ai.decklist import build_deck
-from mtg_ai.actions import possible_actions, PlayLand
+from mtg_ai.actions import possible_actions, PlayLand, ResolveStack
 from mtg_ai.game import HashKind, GameState
 from mtg_ai import cards, game, actions, getters, zones, mana, decklist
 from mtg_ai.game import StaticEffect, StaticAbility
@@ -20,6 +20,7 @@ def test_forest():
     assert len(g0.objects) == 3
     assert len(g1.objects) == 3
     assert isinstance(g1.get(f1).zone, zones.Field)
+    assert g1.get(f1) is not g0.get(f1)
     choices = t_add_g.get_choices(g1)
     assert choices
     g2 = g1.take_action(t_add_g, choices[0])    
@@ -185,7 +186,7 @@ def test_coco():
     deck = [decklist.Forest(g0) for _ in range(4)] + [decklist.Axebane(g0) for _ in range(2)]
     for i,card in enumerate(deck):
         card.zone = zones.Deck(0, i)
-    g0.mana_pool += mana.Mana(green=4)
+    g0.mana_pool = g0.mana_pool + mana.Mana(green=4)
     casting = actions.CastSpell(coco)
     choice = casting.get_choices(g0)[0]
     g1 = g0.take_action(casting, choice)
@@ -357,7 +358,7 @@ def test_target():
         hand_size=1)
     saruli.zone = zones.Field(0)
     steel.zone = zones.Field(0)
-    g0.mana_pool += mana.Mana(blue=1)
+    g0.mana_pool = g0.mana_pool + mana.Mana(blue=1)
     cast = actions.CastSpell(unsummon)
     cast_choices = cast.get_choices(g0)
 
@@ -391,3 +392,29 @@ def test_target():
     assert(len(g0.in_zone(zones.Field())) == 2)
     assert(len(g0.in_zone(zones.Hand())) == 1)
     assert(len(g0.in_zone(zones.Grave())) == 0)
+
+def test_bulwark():
+    g0 = game.GameState([0])
+    ([bulwark,caryatid],[]) = decklist.build_deck(g0, 0,
+         [decklist.WalkingBulwark, decklist.SylvanCaryatid],
+        hand_size=2)
+    bulwark.zone = zones.Field(0)
+    caryatid.zone = zones.Field(0)
+    g0.mana_pool = mana.Mana(green=2)
+    bulwark_ability = bulwark.attrs.activated[0]
+
+    possible = possible_actions(g0)
+    assert bulwark_ability in possible
+    choices = bulwark_ability.get_choices(g0)
+    caryatid_target = next(c for c in choices if isinstance(c['effects_choice']['targets'][0]['target'],decklist.SylvanCaryatid))
+    g1 = g0.take_action(bulwark_ability,caryatid_target)
+    assert len(g1.in_zone(zones.Stack())) == 1
+    choices = ResolveStack().choices(g1)
+    assert len(choices) == 1
+    g2 = g1.take_action(ResolveStack(), choices[0])
+    new_caryatid = g2.get(caryatid)
+    assert "haste" in new_caryatid.attrs.keywords
+    possible = possible_actions(g1)
+    assert new_caryatid.attrs.activated[0] in possible
+    return 
+

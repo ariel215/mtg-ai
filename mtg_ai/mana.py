@@ -1,6 +1,9 @@
+from itertools import chain
+from functools import cached_property, cache
 from dataclasses import dataclass, asdict
 
 COLORS = ('white', 'blue', 'black', 'red', 'green', 'colorless')
+FIELDS = ('white', 'blue', 'black', 'red', 'green', 'gold', 'colorless','generic')
 
 @dataclass(unsafe_hash=True,slots=True)
 class Mana:
@@ -14,7 +17,7 @@ class Mana:
     generic: int = 0
 
     def __str__(self):
-        return f"Mana({','.join(f'{k}={v}' for k,v in asdict(self).items() if v)})"
+        return f"Mana({','.join(f'{k}={v}' for k,v in [(field,getattr(self,field)) for field in FIELDS] if v)})"
 
     def __repr__(self):
         return str(self)
@@ -38,30 +41,27 @@ class Mana:
                 mana.generic += int(field)
         return mana
 
-    def __iadd__(self, other):
-        for field in asdict(self):
+    def __add__(self, other):
+        result = self.copy()
+        for field in FIELDS:
             current = getattr(self,field)
-            setattr(self,field,current + getattr(other, field))
-        return self
+            setattr(result,field,current + getattr(other, field))
+        return result
 
-    def __isub__(self, cost):
+    def __sub__(self, cost):
         """
         Use the mana in `self` to pay the mana cost `cost`
         """
-
+        result = self.copy()
         # step one: pay for colored costs with colored mana
-        for field in asdict(self):
-            if field == 'generic':
-                continue
-            if field == 'gold':
-                continue
-            current = getattr(self,field)
-            setattr(self,field,current - getattr(cost, field))
+        for field in COLORS:
+            current = getattr(result,field)
+            setattr(result,field,current - getattr(cost, field))
 
         # step two: pay remaining colored costs with gold mana
         gold = cost.gold
         for field in COLORS:
-            if color_cost := getattr(self, field):
+            if color_cost := getattr(result, field):
                 amt = min(color_cost, gold)
                 setattr(self, field, color_cost-amt)
                 gold -= amt
@@ -70,37 +70,23 @@ class Mana:
         generic_cost = cost.generic
         # step four: pay generic costs, starting with colorless mana
         for field in list(reversed(COLORS)) + ['gold']:
-            value = getattr(self, field)
+            value = getattr(result, field)
             amt = min(generic_cost, value)
             setattr(self, field, value - amt)
             generic_cost -= amt 
         return self
-    
-    def __add__(self, other) -> 'Mana':
-        new = self.copy()
-        new += other
-        return new
-
-    def __sub__(self, other) -> 'Mana':
-        new = self.copy() 
-        new -= other
-        return new
-
-    def __imul__(self, amount):
-        for field in asdict(self):
-            setattr(self, field, getattr(self, field) * amount)
-        return self
 
     def __mul__(self, amount):
-        copy = self.copy() 
-        copy *= amount
-        return copy
+        result = self.copy()
+        for field in FIELDS:
+            setattr(result, field, getattr(result, field) * amount)
+        return result
 
     @property
+    @cache
     def mana_value(self):
         return sum(getattr(self, field)
-         for field in
-         asdict(self)
+         for field in FIELDS
      )
 
     def __eq__(self, other):
@@ -109,7 +95,7 @@ class Mana:
 
         return all(
             getattr(self, field) == getattr(other, field)
-             for field in asdict(self)
+             for field in chain(COLORS,('gold','colorless','generic'))
         )
 
     def can_pay(self, other)->bool:
@@ -133,5 +119,5 @@ class Mana:
         return self.mana_value >= other.mana_value        
 
     def copy(self):
-        return Mana(**asdict(self))
+        return Mana(self.white, self.blue,self.black,self.red,self.green,self.gold,self.colorless,self.generic)
     

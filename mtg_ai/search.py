@@ -6,7 +6,7 @@ from tqdm import trange
 from collections.abc import Iterable
 import collections
 from dataclasses import dataclass,field
-from typing import List, Any, Self, Dict, Callable, Tuple, Optional, TypeVar
+from typing import List, Any, Self, Dict, Callable, Tuple, Optional, TypeVar, Set
 from mtg_ai import actions, decklist, getters, zones
 from mtg_ai.game import GameState, Action, canonical_key
 import logging
@@ -46,12 +46,12 @@ class HistoryNode:
         return self.children
 
 
-    def to_record(self):
+    def to_record(self, key=canonical_key):
         if self.stats is None:
             stats = None
         else:
             stats = {'value': self.stats.value, 'visits': self.stats.visits}
-        gs = canonical_key(self.game_state)
+        gs = key(self.game_state)
         return {'game_state': gs, 'stats': stats}
 
 @dataclass
@@ -118,19 +118,20 @@ def bfs(initial: GameState, condition, timeout=int(1e6)) -> SearchResult:
 
 class MCTSSearcher:
     def __init__(self, initial_state: GameState, statistics: Dict[tuple, MCTSInfo], condition: Callable[[GameState],bool],
-        C: float, max_turns: int = 10, n_iters: int=1000):
+        C: float, max_turns: int = 10, n_iters: int=1000, key=canonical_key):
         self.root = HistoryNode(initial_state)
         self.stats = statistics
         self.condition = condition
         self.C = C
         self.max_turns = max_turns
         self.n_iters = n_iters
-        
+        self.key = key
+
 
     def score(self, node: HistoryNode) -> float:
         info = node.stats
         if info is None:
-            node.stats = self.stats.get(canonical_key(node.game_state))
+            node.stats = self.stats.get(self.key(node.game_state))
             return 0.0
 
         value = info.value / info.visits
@@ -140,6 +141,7 @@ class MCTSSearcher:
     def playout(self, state: HistoryNode, max_turns: int) -> float:
         logger.debug("Random playout")
         current = state.game_state
+        current  = current.take_action(actions.Shuffle(),{})
         while current.turn_number < max_turns:
             if self.condition(current):
                 logger.debug(f"Found victory by turn {current.turn_number}")
@@ -157,76 +159,37 @@ class MCTSSearcher:
         """Initialise node.stats from the transposition table for any known states."""
         for node in nodes:
             if node.stats is None:
-                key = canonical_key(node.game_state)
+                key = self.key(node.game_state)
                 if key in self.stats:
                     info = self.stats[key]
                     node.stats = MCTSInfo(value=info.value, visits=info.visits)
 
     def backpropogate(self, state: HistoryNode | None, value: float):
+        key = self.key
         while state:
             if state.stats is None:
-                state.stats = self.stats.get(canonical_key(state.game_state)) or MCTSInfo()
+                state.stats = self.stats.get(key(state.game_state)) or MCTSInfo()
             info = state.stats
             info.value += value
             info.visits += 1
-            self.stats[canonical_key(state.game_state)] = MCTSInfo(
+            self.stats[key(state.game_state)] = MCTSInfo(
                 value=info.value, visits=info.visits
             )
             state = state.parent
 
-    def explore_node(self, node: HistoryNode):
-        current = node
-        while not self.condition(current.game_state):
-            if current.game_state.turn_number > self.max_turns:
-                value = 0
-                break
+    def select_node(self)->HistoryNode:
+        current = self.root
+        while current.stats is not None:
             children = current.expand()
-            unexplored = [child for child in children if child.stats is not None]
+            unexplored = [child for child in children if child.stats is None]
             if unexplored:
-                current = random.choice(children)
-                value = self.playout(current,self.max_turns - current.game_state.turn_number)
-                break
-            else:
-                scores = [self.score(child) for child in children]
-                def key(i_s):
-                    return i_s[1]
-                i,_ = max(enumerate(scores, ), key=key)
-                current = children[i]
-        else:
-            value = 1.0 / current.game_state.turn_number
-        self.backpropogate(current, value)
-        assert current.stats is not None
-        assert node.stats is not None
-
-    def explore(self) -> List[HistoryNode]:
-        """
-        Run an iteration of MCTS to compute the best next move.
-        """
-        children = self.root.expand()
-        self._seed_from_table([self.root] + children)
-
-        # Force-explore any child not yet known; backpropagate also sets root.stats
-        for child in children:
-            if child.stats is None:
-                self.explore_node(child)
-
-        # Edge case: all children were seeded but root.stats still None
-        if self.root.stats is None:
-            self.explore_node(children[0])
-
-        assert all(child.stats is not None for child in children)
-
-        def key(i_s):
-            return i_s[1]
-
-        for _ in range(self.n_iters):
+                return random.choice(unexplored)
+            
             scores = [self.score(child) for child in children]
-            i,_ = max(enumerate(scores, ), key=key)
-            self.explore_node(children[i])
-
-        assert all(child.stats is not None for child in children)
-        return children
-
+            
+            child, _  = max(zip(children,scores), key = lambda pair: pair[1])
+            current = child
+        return current
 
     def choose(self) -> HistoryNode:
         """
@@ -237,14 +200,13 @@ class MCTSSearcher:
         visited the most times. Exception: we always prefer not ending the turn
         to ending the turn.
         """
-        children = self.root.expand()
+        for _ in range(self.n_iters):
+            node = self.select_node()
+            value = self.playout(node, self.max_turns)
+            self.backpropogate(node, value)
+        children = self.root.children
         logger.debug("children: %s", children)
-        if len(children) == 1:
-            return children[0]
-        new_children = self.explore()
-        assert len(children) == len(new_children)
-        assert new_children == children
-        nvisits = [(child,child.stats.visits) for child in new_children]
+        nvisits = [(child,child.stats.visits) for child in children]
         if len(nvisits) > 1:
             nvisits = [pair for pair in nvisits if pair[0].game_state is not END_TURN]
         choice, n= max(nvisits, key=lambda p: p[1])
@@ -259,7 +221,7 @@ class MCTSSearcher:
         nodes = [self.root]
         while len(nodes) > 0:
             current = nodes.pop()
-            records.append(current.to_record())
+            records.append(current.to_record(self.key))
             nodes.extend(current.children)
         return records
     

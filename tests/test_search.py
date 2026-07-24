@@ -31,7 +31,7 @@ def test_possible_fetch():
     children = searcher.root.expand()
     assert len(children) == 1
     assert children[0].action == fetch.attrs.activated[0]
-    new_forest = children[0].game_state.get(forest)
+    new_forest = children[0].game_state.objects[forest.uid]
     assert zones.Field().contains(new_forest)
 
 
@@ -104,7 +104,7 @@ def test_mcts_short():
          decklist.Axebane, decklist.WallOfOmens, decklist.Staff, decklist.Forest],
         hand_size=5,
     )
-    searcher = search.MCTSSearcher(gs,{},search.staff_victory,1.2,n_iters=1)
+    searcher = search.MCTSSearcher(gs,{},search.staff_victory,1.2,n_iters=3)
     searcher.choose()
 
 

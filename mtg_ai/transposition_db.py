@@ -11,6 +11,9 @@ This module provides three operations:
 Schema follows the design in .notes/SERIALIZATION.md (subset: no mcts_edges or
 pending_triggers, which are out of scope for the transposition table).
 """
+from time import sleep
+
+from contextlib import closing
 import itertools
 from mtg_ai.game import GameState
 import hashlib
@@ -19,12 +22,14 @@ import pickle
 import sqlite3
 from typing import Dict, List, Iterable
 
+
 from mtg_ai.search import MCTSInfo
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 _SCHEMA = """
 PRAGMA journal_mode = WAL;
@@ -33,7 +38,6 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS game_states (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     canonical_hash BLOB    NOT NULL UNIQUE,
-    turn_number    INTEGER NOT NULL,
     land_drops     INTEGER NOT NULL,
     active_player  INTEGER NOT NULL,
     mana_white     INTEGER NOT NULL DEFAULT 0,
@@ -79,6 +83,7 @@ CREATE TABLE IF NOT EXISTS mcts_results(
 );
 """ 
 
+
 # sqlite has a maximum placeholder size
 _BATCH_SIZE = 2**15-5
 
@@ -88,24 +93,28 @@ def _canonical_hash(key: tuple) -> bytes:
 
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
+    # check which version of the schema we're using
     conn.executescript(_SCHEMA)
 
 
 def _execute_batched(conn: sqlite3.Connection, statement: str, elements: Iterable) -> List[sqlite3.Row]:
     batches = list(itertools.batched(elements,_BATCH_SIZE))
     placeholders = [','.join('?' * len(batch)) for batch in batches]
-    return [
-        row 
-        for (placeholder, batch) in zip(placeholders, batches)
-        for row in conn.execute(statement.format(placeholder),batch).fetchall()
-    ]
+    results = []
+    
+    for (placeholder, batch) in zip(placeholders, batches):
+        cursor = conn.execute(statement.format(placeholder),batch)
+        row = cursor.fetchall()
+        cursor.close()
+        results.extend(row) 
+    return results
 
 def _decompose_key(key: tuple) -> tuple:
     """
     Split a canonical_key tuple into its component parts for DB insertion.
 
     canonical_key structure:
-        (turn_number, land_drops, active_player, mana_key, objects_key)
+        (land_drops, active_player, mana_key, objects_key)
 
     mana_key:
         (white, blue, black, red, green, gold, colorless, generic)
@@ -117,11 +126,13 @@ def _decompose_key(key: tuple) -> tuple:
     Returns:
         (gs_fields: dict, objects: list of dict)
     """
-    turn_number, land_drops, active_player, mana_key, objects_key = key
+    if len(key) == 5:
+        turn_number, land_drops, active_player, mana_key, objects_key = key
+    else:
+        land_drops, active_player, mana_key, objects_key = key
     mw, mb_lu, mb_la, mr, mg, mgo, mc, mge = mana_key
 
     gs_fields = {
-        'turn_number': turn_number,
         'land_drops': land_drops,
         'active_player': active_player,
         'mana_white': mw,
@@ -148,6 +159,7 @@ def _decompose_key(key: tuple) -> tuple:
         })
 
     return gs_fields, objects
+
 
 
 def _recompose_key(gs_row: sqlite3.Row,
@@ -180,7 +192,6 @@ def _recompose_key(gs_row: sqlite3.Row,
 
     objects_key = tuple(sorted(obj_tuples))
     return (
-        gs_row['turn_number'],
         gs_row['land_drops'],
         gs_row['active_player'],
         mana_key,
@@ -193,50 +204,52 @@ def _insert_game_state(conn: sqlite3.Connection,
                        gs_fields: dict,
                        objects: list,
                        info: MCTSInfo,
-                       replace_stats: bool) -> None:
+                       replace_stats: bool,) -> None:
     """
     Insert (or replace) a game state and its objects, then upsert mcts_stats.
 
     replace_stats=True  → overwrite existing value/visits (save semantics)
     replace_stats=False → accumulate existing value/visits (merge semantics)
     """
-    # Upsert game_states (structural data never changes for a given hash)
     conn.execute("""
         INSERT OR IGNORE INTO game_states
-            (canonical_hash, turn_number, land_drops, active_player,
-             mana_white, mana_blue, mana_black, mana_red, mana_green,
-             mana_gold, mana_colorless, mana_generic)
+            (canonical_hash, land_drops, active_player,
+            mana_white, mana_blue, mana_black, mana_red, mana_green,
+            mana_gold, mana_colorless, mana_generic)
         VALUES
-            (:hash, :turn_number, :land_drops, :active_player,
-             :mana_white, :mana_blue, :mana_black, :mana_red, :mana_green,
-             :mana_gold, :mana_colorless, :mana_generic)
+            (:hash, :land_drops, :active_player,
+            :mana_white, :mana_blue, :mana_black, :mana_red, :mana_green,
+            :mana_gold, :mana_colorless, :mana_generic)
     """, {'hash': chash, **gs_fields})
 
-    gs_id = conn.execute(
-        "SELECT id FROM game_states WHERE canonical_hash = ?", (chash,)
-    ).fetchone()['id']
 
+    with closing(conn.execute(
+        "SELECT id FROM game_states WHERE canonical_hash = ?", (chash,)
+    )) as cursor: 
+        gs_id  =cursor.fetchone()['id']
+    
     # Only insert objects if this is a new state (they're structurally immutable)
-    existing_objs = conn.execute(
+    with closing(conn.execute(
         "SELECT COUNT(*) FROM game_objects WHERE game_state_id = ?", (gs_id,)
-    ).fetchone()[0]
+    )) as cursor: 
+        existing_objs = cursor.fetchone()[0]
 
     if existing_objs == 0:
-        cur = conn.cursor()
-        for obj in objects:
-            cur.execute("""
-                INSERT INTO game_objects
-                    (game_state_id, card_class, zone_type, zone_owner,
-                     zone_position, tapped, summoning_sick)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (gs_id, obj['card_class'], obj['zone_type'], obj['zone_owner'],
-                  obj['zone_position'], obj['tapped'], obj['summoning_sick']))
-            obj_id = cur.lastrowid
-            for counter_type, count in obj['counters']:
+        with closing(conn.cursor()) as cur:
+            for obj in objects:
                 cur.execute("""
-                    INSERT INTO object_counters (game_object_id, counter_type, count)
-                    VALUES (?, ?, ?)
-                """, (obj_id, counter_type, count))
+                    INSERT INTO game_objects
+                        (game_state_id, card_class, zone_type, zone_owner,
+                        zone_position, tapped, summoning_sick)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (gs_id, obj['card_class'], obj['zone_type'], obj['zone_owner'],
+                    obj['zone_position'], obj['tapped'], obj['summoning_sick']))
+                obj_id = cur.lastrowid
+                for counter_type, count in obj['counters']:
+                    cur.execute("""
+                        INSERT INTO object_counters (game_object_id, counter_type, count)
+                        VALUES (?, ?, ?)
+                    """, (obj_id, counter_type, count))
 
     # Upsert mcts_stats
     if replace_stats:
@@ -246,7 +259,7 @@ def _insert_game_state(conn: sqlite3.Connection,
             ON CONFLICT (game_state_id) DO UPDATE SET
                 value  = excluded.value,
                 visits = excluded.visits
-        """, (gs_id, info.value, info.visits))
+        """, (gs_id, info.value, info.visits)).close()
     else:
         conn.execute("""
             INSERT INTO mcts_stats (game_state_id, value, visits)
@@ -254,7 +267,9 @@ def _insert_game_state(conn: sqlite3.Connection,
             ON CONFLICT (game_state_id) DO UPDATE SET
                 value  = mcts_stats.value  + excluded.value,
                 visits = mcts_stats.visits + excluded.visits
-        """, (gs_id, info.value, info.visits))
+        """, (gs_id, info.value, info.visits)).close()
+    return
+
 
 
 # ---------------------------------------------------------------------------
@@ -269,12 +284,14 @@ def save_statistics(path: str, statistics: Dict[tuple, MCTSInfo]) -> None:
     visits are overwritten, not accumulated).  Use merge_statistics() to
     accumulate across runs instead.
     """
-    with sqlite3.connect(path) as conn:
-        conn.row_factory = sqlite3.Row
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    with conn:
         _ensure_schema(conn)
-        for key, info in statistics.items():
-            chash = _canonical_hash(key)
-            gs_fields, objects = _decompose_key(key)
+    for key, info in statistics.items():
+        chash = _canonical_hash(key)
+        gs_fields, objects = _decompose_key(key)
+        with conn:
             _insert_game_state(conn, chash, gs_fields, objects, info, replace_stats=True)
 
 
@@ -321,6 +338,7 @@ def load_result(path: str, game: tuple) -> int | None:
 def load_all_results(path: str) -> Dict[tuple, int]:
     with sqlite3.connect(database=path) as conn:
         conn.row_factory = sqlite3.Row
+        _ensure_schema(conn)
         game_results = [(row['game_state_id'],row['final_turn']) for row in 
             conn.execute("SELECT * FROM mcts_results").fetchall()
         ]
@@ -384,19 +402,117 @@ def load_statistics(path: str) -> Dict[tuple, MCTSInfo]:
     """
     if not os.path.exists(path):
         return {}
-
-    with sqlite3.connect(path) as conn:
-        conn.row_factory = sqlite3.Row
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    with conn:
         _ensure_schema(conn)
         # Load all objects and counters in bulk
         gs_rows = conn.execute("SELECT * FROM mcts_stats").fetchall()
-        gs_ids = [row['game_state_id'] for row in gs_rows]
+    gs_ids = [row['game_state_id'] for row in gs_rows]
+    with conn:
         keys = _load_game_states(conn, *gs_ids)
         results = {
             key: MCTSInfo(row['value'], row['visits'])
             for key, row in zip(keys, gs_rows)
         }
-        return results
+    return results
+
+
+
+class LazyTranspositionDB:
+    """Dict-like view of the transposition DB that fetches entries on demand.
+
+    Use instead of load_statistics() when the DB is large:
+        with LazyTranspositionDB(path) as db:
+            searcher = MCTSSearcher(state, db)
+            searcher.choose(...)
+            db.flush()          # overwrite semantics
+            # or db.merge()     # accumulate semantics
+    """
+
+    def __init__(self, path: str) -> None:
+        self._conn = sqlite3.connect(path)
+        self._conn.row_factory = sqlite3.Row
+        with self._conn:
+            _ensure_schema(self._conn)
+        self._cache: Dict[tuple, MCTSInfo] = {}
+        self._dirty: set[tuple] = set()
+
+    def _fetch(self, key: tuple) -> MCTSInfo | None:
+        chash = _canonical_hash(key)
+        with self._conn:
+            row = self._conn.execute(
+                """SELECT ms.value, ms.visits
+                FROM game_states gs
+                JOIN mcts_stats ms ON ms.game_state_id = gs.id
+                WHERE gs.canonical_hash = ?""",
+                (chash,),
+            ).fetchone()
+        if row is None:
+            return None
+        return MCTSInfo(value=row["value"], visits=row["visits"])
+
+    def __contains__(self, key: object) -> bool:
+        if not isinstance(key, tuple):
+            return False
+        if key in self._cache:
+            return True
+        info = self._fetch(key)
+        if info is not None:
+            self._cache[key] = info
+            return True
+        return False
+
+    def __getitem__(self, key: tuple) -> MCTSInfo:
+        if key in self._cache:
+            return self._cache[key]
+        info = self._fetch(key)
+        if info is None:
+            raise KeyError(key)
+        self._cache[key] = info
+        return info
+
+    def get(self, key: tuple, default: MCTSInfo | None = None) -> MCTSInfo | None:
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def __setitem__(self, key: tuple, value: MCTSInfo) -> None:
+        self._cache[key] = value
+        self._dirty.add(key)
+
+    def items(self):
+        """Yields dirty (written this session) entries.
+
+        Makes LazyTranspositionDB compatible with save_statistics() and
+        merge_statistics(), but prefer flush() / merge() to avoid opening
+        a second connection to the same file.
+        """
+        return ((k, self._cache[k]) for k in self._dirty)
+
+    def flush(self) -> None:
+        """Write dirty entries to the DB, overwriting existing value/visits."""
+        self._write(replace_stats=True)
+
+    def merge(self) -> None:
+        """Write dirty entries to the DB, accumulating existing value/visits."""
+        self._write(replace_stats=False)
+
+    def _write(self, replace_stats: bool) -> None:
+        with self._conn:
+            for key in self._dirty:
+                info = self._cache[key]
+                chash = _canonical_hash(key)
+                gs_fields, objects = _decompose_key(key)
+                _insert_game_state(self._conn, chash, gs_fields, objects, info, replace_stats)
+        self._dirty.clear()
+
+    def __enter__(self) -> "LazyTranspositionDB":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self._conn.close()
 
 
 def merge_statistics(path: str, statistics: Dict[tuple, MCTSInfo]) -> None:
@@ -407,10 +523,12 @@ def merge_statistics(path: str, statistics: Dict[tuple, MCTSInfo]) -> None:
     replaced.  The database is created if it does not exist.  This is the
     right operation for combining results from parallel MCTS workers.
     """
-    with sqlite3.connect(path) as conn:
-        conn.row_factory = sqlite3.Row
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    with conn:
         _ensure_schema(conn)
-        for key, info in statistics.items():
-            chash = _canonical_hash(key)
-            gs_fields, objects = _decompose_key(key)
+    for key, info in statistics.items():
+        chash = _canonical_hash(key)
+        gs_fields, objects = _decompose_key(key)
+        with conn:
             _insert_game_state(conn, chash, gs_fields, objects, info, replace_stats=False)

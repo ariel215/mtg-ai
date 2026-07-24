@@ -9,7 +9,7 @@ All tests in this file should FAIL before the implementation and PASS after.
 """
 import pytest
 from mtg_ai import actions, decklist, game, search, zones
-from mtg_ai.game import canonical_key
+from mtg_ai.game import canonical_key, info_set
 from mtg_ai.search import MCTSInfo, MCTSSearcher
 
 
@@ -41,7 +41,7 @@ def test_statistics_populated_after_explore():
     gs = _simple_state()
     statistics = {}
     searcher = MCTSSearcher(gs, statistics, _never, C=1.2, n_iters=5)
-    searcher.explore()
+    searcher.choose()
     assert len(statistics) > 0
 
 
@@ -54,7 +54,7 @@ def test_statistics_keys_are_canonical_tuples():
     gs = _simple_state()
     statistics = {}
     searcher = MCTSSearcher(gs, statistics, _never, C=1.2, n_iters=5)
-    searcher.explore()
+    searcher.choose()
     assert len(statistics) > 0, "statistics must be populated (prerequisite)"
     for key in statistics:
         assert isinstance(key, tuple), f"expected tuple key, got {type(key)}"
@@ -64,14 +64,14 @@ def test_statistics_keys_are_canonical_tuples():
 # Test 3: root state's canonical key appears in statistics
 # ---------------------------------------------------------------------------
 
-def test_root_canonical_key_in_statistics():
+@pytest.mark.parametrize("key",(canonical_key,info_set))
+def test_root_canonical_key_in_statistics(key):
     """canonical_key(initial_state) must be a key in statistics after explore()."""
     gs = _simple_state()
     statistics = {}
-    searcher = MCTSSearcher(gs, statistics, _never, C=1.2, n_iters=5)
-    searcher.explore()
-    assert canonical_key(gs) in statistics
-
+    searcher = MCTSSearcher(gs, statistics, _never, C=1.2, n_iters=5,key=key)
+    searcher.choose()
+    assert key(gs) in statistics
 
 # ---------------------------------------------------------------------------
 # Test 4: pre-seeded statistics are used by root
@@ -88,7 +88,7 @@ def test_pre_seeded_stats_used_by_root():
     pre_seeded_visits = 100
     statistics = {key: MCTSInfo(value=1.0, visits=pre_seeded_visits)}
     searcher = MCTSSearcher(gs, statistics, _never, C=1.2, n_iters=5)
-    searcher.explore()
+    searcher.choose()
     assert searcher.root.stats is not None
     assert searcher.root.stats.visits >= pre_seeded_visits
 
@@ -97,7 +97,8 @@ def test_pre_seeded_stats_used_by_root():
 # Test 5: shared statistics accumulates across two independent searchers
 # ---------------------------------------------------------------------------
 
-def test_shared_statistics_accumulates_across_searchers():
+@pytest.mark.parametrize("key_fn",(canonical_key,info_set))
+def test_shared_statistics_accumulates_across_searchers(key_fn):
     """
     Two searchers that share a statistics dict should accumulate combined
     visit counts.  After searcher1 finishes, the root canonical key must be
@@ -107,18 +108,18 @@ def test_shared_statistics_accumulates_across_searchers():
     gs1 = _simple_state()
     statistics = {}
 
-    searcher1 = MCTSSearcher(gs1, statistics, _never, C=1.2, n_iters=5)
-    searcher1.explore()
+    searcher1 = MCTSSearcher(gs1, statistics, _never, C=1.2, n_iters=5,key=key_fn)
+    searcher1.choose()
 
-    key = canonical_key(gs1)
+    key = key_fn(gs1)
     assert key in statistics, "searcher1 must populate statistics (prerequisite)"
     visits_after_1 = statistics[key].visits
 
     # Build the same logical state independently (different Python objects, same key)
     gs2 = _simple_state()
-    assert canonical_key(gs2) == key, "gs2 must be logically identical to gs1"
+    assert key_fn(gs2) == key, "gs2 must be logically identical to gs1"
 
-    searcher2 = MCTSSearcher(gs2, statistics, _never, C=1.2, n_iters=5)
-    searcher2.explore()
+    searcher2 = MCTSSearcher(gs2, statistics, _never, C=1.2, n_iters=5,key=key_fn)
+    searcher2.choose()
 
     assert statistics[key].visits > visits_after_1

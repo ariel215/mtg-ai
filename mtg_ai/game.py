@@ -1,13 +1,14 @@
+from mtg_ai.zones import Zone, Grave
 from enum import Enum
 from itertools import chain, product
-from typing import TypeVar, Optional, List, Dict, Any, TYPE_CHECKING, Set, Callable, Tuple
+from typing import TypeVar, Optional, List, Dict, Any, TYPE_CHECKING, Set, Callable, Tuple, NewType
 from . import zones
 from .mana import Mana
 from . import getters
 
 if TYPE_CHECKING:
-    from actions import Trigger, Target
-    from cards import Card
+    from .actions import Trigger, Target
+    from .cards import Card
 
 Player = int
 GenericStackObject = TypeVar('GenericStackObject')
@@ -16,6 +17,19 @@ GenericGameObject = TypeVar('GenericGameObject', bound='GameObject')
 class HashKind(Enum):
     FULL = 0
     VISIBLE = 1
+
+def _obj_key(obj, gs: 'GameState'):
+    zone = obj.zone
+    zone_class = type(zone).__name__ if zone is not None else ''
+    zone_owner = -1 if (zone is None or zone.owner is None) else zone.owner
+    zone_pos   = -1 if (zone is None or zone.position is None) else zone.position
+    tapped     = getattr(obj, 'tapped', False)
+    sick       = obj in gs.summoning_sick
+    counters   = tuple(sorted(
+        (k, v) for k, v in getattr(obj, 'counters', {}).items() if v != 0
+    ))
+    return (type(obj).__name__, zone_class, zone_owner, zone_pos,
+            tapped, sick, counters)
 
 
 def canonical_key(gs: 'GameState') -> tuple:
@@ -42,21 +56,29 @@ def canonical_key(gs: 'GameState') -> tuple:
     mana_key = (m.white, m.blue, m.black, m.red, m.green,
                 m.gold, m.colorless, m.generic)
 
-    def obj_key(obj):
-        zone = obj.zone
-        zone_class = type(zone).__name__ if zone is not None else ''
-        zone_owner = -1 if (zone is None or zone.owner is None) else zone.owner
-        zone_pos   = -1 if (zone is None or zone.position is None) else zone.position
-        tapped     = getattr(obj, 'tapped', False)
-        sick       = obj in gs.summoning_sick
-        counters   = tuple(sorted(
-            (k, v) for k, v in getattr(obj, 'counters', {}).items() if v != 0
-        ))
-        return (type(obj).__name__, zone_class, zone_owner, zone_pos,
-                tapped, sick, counters)
 
-    objects_key = tuple(sorted(obj_key(obj) for obj in gs.objects))
-    return (gs.turn_number, gs.land_drops, gs.active_player, mana_key, objects_key)
+    objects_key = tuple(sorted(_obj_key(obj,gs) for obj in gs.objects))
+    return (gs.land_drops, gs.active_player, mana_key, objects_key)
+
+
+def info_set(gs: 'GameState') -> tuple:
+    """
+    Return a deterministic, UID-independent, hashable tuple that uniquely
+    identifies the logical game state up to hidden information
+    """
+
+    m = gs.mana_pool
+    mana_key = (m.white, m.blue, m.black, m.red, m.green,
+                m.gold, m.colorless, m.generic)
+    player = gs.active_player
+    
+    visible_zones = (zones.Hand(player), zones.Field(), zones.Grave(), zones.Stack())
+    objects_key = tuple(
+        sorted(_obj_key(obj,gs) for obj in gs.objects
+        if any(zone.contains(obj) for zone in visible_zones)
+    ))
+
+    return (gs.land_drops, gs.active_player, mana_key,objects_key)
 
 
 class GameState:
@@ -71,14 +93,13 @@ class GameState:
     this produces a new GameState with those changes.
     """
 
-    __slots__ = ('hash_kind','objects','players', 'mana_pool','turn_number','triggers','summoning_sick', 
-                 'land_drops', 'active_player', 'active_effects')
+    __slots__ = ('hash_kind','objects', 'players', 'mana_pool','turn_number','triggers','summoning_sick', 
+                 'land_drops', 'active_player', 'active_effects', '_zones')
 
     def __init__(self,players: List[Player], *, 
                 mana_pool: Optional['Mana']=None, 
                 turn_number:int=1,
                 land_drops: int = 1,
-                active_player: Player | None = None,
                 hash_kind:HashKind = HashKind.FULL):
         self.hash_kind = hash_kind
         self.objects = []
@@ -90,16 +111,28 @@ class GameState:
         self.land_drops = land_drops  #: the number of lands that can still be played this turn
         self.active_player = 0
         self.active_effects: 'Set[ActiveEffect]' = set()
+        self._zones = {}
 
 
     def copy(self) -> 'GameState':
         new_game_state = GameState(self.players,mana_pool=self.mana_pool.copy(), turn_number=self.turn_number,
-            land_drops=self.land_drops, hash_kind=self.hash_kind, active_player=self.active_player)
-        new_game_state.objects = [obj.copy(new_game_state) for obj in self.objects]
-        new_game_state.summoning_sick = {new_game_state.get(card) for card in self.summoning_sick}
+            land_drops=self.land_drops, hash_kind=self.hash_kind)
+        new_game_state.objects = [card for card in self.objects]
+        new_game_state.summoning_sick = {card for card in self.summoning_sick}
         new_game_state.triggers = self.triggers.copy()
         new_game_state.active_effects = self.active_effects.copy()
         return new_game_state
+
+    def update_obj(self, obj_id: int) -> 'GameObject':
+        obj = self.objects[obj_id]
+        new_obj = obj.copy(self)
+        new_obj.uid = obj_id
+        if obj in self.summoning_sick:
+            self.summoning_sick.discard(obj)
+            self.summoning_sick.add(new_obj)
+        self.objects[obj_id] = new_obj
+        self.objects.pop()
+        return new_obj
 
     def in_zone(self, zone: zones.Zone)->List['GameObject']:
         return sorted([c for c in self.objects if zone.contains(c)],
@@ -180,6 +213,8 @@ class GameState:
     def active_statics(self) -> List['StaticEffect']:
         return [active.effect for active in self.active_effects if active.is_static]
 
+UID = NewType('UID', int)
+
 class GameObject:
     """
     Base class for every object that can change between game states, and
@@ -190,10 +225,10 @@ class GameObject:
     def __init__(self, game_state: GameState, uid: Optional[int]=None):
         self.game_state = game_state
         if uid is None:
-            self.uid = len(game_state.objects)
+            self.uid = UID(len(game_state.objects))
             game_state.objects.append(self)
         else:
-            self.uid = uid
+            self.uid = UID(uid)
             game_state.objects[uid] = self
         self._zone : Optional[zones.Zone] = None
     
@@ -275,7 +310,7 @@ class Action:
         
         """
 
-        targets: List['Target'] = [game_state.get(t) for t in self.targets]
+        targets: List['Target'] = [game_state.objects[t.uid] for t in self.targets]
         not_yet_set: List['Target'] = [t for t in targets if not t.is_set]
         if not_yet_set:
             target_choices = [target.choices(game_state) for target in not_yet_set]
@@ -303,16 +338,17 @@ class Action:
 
     def register_target(self, target: 'Target'):
         self.targets.append(target)
+        return self
 
     def set_targets(self, game_state, *, targets=None, **_kwargs):
         if targets: 
-            locals = [game_state.get(target) for target in self.targets]
+            locals = [game_state.update_obj(target.uid) for target in self.targets]
             for (local, value) in zip(locals, targets):
                 local.set(value['target'])
 
     def unset_targets(self, game_state):
         for target in self.targets:
-            game_state.get(target).unset()
+            game_state.objects[target.uid].unset()
 
     def __add__(self, other: 'Action') -> 'And':
         return And(self, other)
@@ -481,11 +517,11 @@ class StaticAbility:
         self.on_move(source.game_state)
 
     def is_active(self, game_state) -> bool:
-        card = game_state.get(self.active_effect.source)
+        card = game_state.objects[self.active_effect.source]
         return self.active_zone.contains(card)
 
     def on_move(self, game_state: GameState):
-        card = game_state.get(self.active_effect.source)
+        card = game_state.objects[self.active_effect.source.uid]
         if self.active_zone.contains(card):
             game_state.active_effects.add(self.active_effect)
         elif self.active_effect in game_state.active_effects:

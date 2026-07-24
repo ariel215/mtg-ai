@@ -6,16 +6,18 @@ across processes.
 These are TDD / contract tests. canonical_key is expected to be importable
 from mtg_ai.game.
 """
+from typing import List, Tuple
+from mtg_ai.cards import Card
 import pytest
 from mtg_ai import game, actions, zones, mana, decklist
-from mtg_ai.game import canonical_key
+from mtg_ai.game import canonical_key, GameState
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def fresh_state(*specs):
+def fresh_state(*specs) -> Tuple[GameState, List[Card]]:
     """Build a GameState. Each spec is (CardClass, zone_instance)."""
     gs = game.GameState([0])
     cards = []
@@ -126,13 +128,6 @@ def test_different_mana_pool():
     assert canonical_key(g1) != canonical_key(g2)
 
 
-def test_different_turn_number():
-    gs, _ = fresh_state((decklist.Forest, zones.Field(0)))
-    g2 = gs.copy()
-    g2.turn_number += 1
-    assert canonical_key(gs) != canonical_key(g2)
-
-
 def test_different_land_drops():
     """Remaining land drops are part of game state and must affect the key."""
     gs, _ = fresh_state((decklist.Forest, zones.Field(0)))
@@ -162,7 +157,8 @@ def test_counters_affect_key():
     [f] = gs.objects
 
     g2 = gs.copy()
-    g2.get(f)._state.counters['plus_one'] = 1
+    g2.update_obj(f.uid)
+    g2.objects[f.uid]._state.counters['plus_one'] = 1
 
     assert canonical_key(gs) != canonical_key(g2)
 
@@ -176,7 +172,7 @@ def test_zero_counters_equal_to_no_counters():
     [f] = gs.objects
 
     g2 = gs.copy()
-    _ = g2.get(f)._state.counters['plus_one']  # triggers defaultdict insertion at 0
+    _ = g2.objects[f.uid]._state.counters['plus_one']  # triggers defaultdict insertion at 0
 
     assert canonical_key(gs) == canonical_key(g2)
 

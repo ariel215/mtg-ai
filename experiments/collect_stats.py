@@ -1,3 +1,5 @@
+from _asyncio import Future
+from mtg_ai.transposition_db import LazyTranspositionDB
 from packaging.version import parse
 import functools
 import multiprocessing
@@ -8,6 +10,8 @@ import mtg_ai
 import os
 import random
 from mtg_ai.decklist import *
+import asyncio
+from concurrent.futures import ProcessPoolExecutor
 
 # Workflow: 
 # - randomize
@@ -19,7 +23,31 @@ DB = os.getenv("MTG_AI_DB") or "mtg_ai_db.sqlite"
 
 
 CARDS = [
-    (WindsweptHeath , 8),
+    (WindsweptHeath , 10),
+    (TempleGarden , 4),
+    (BreedingPool , 3),
+    (Forest, 2),
+    (Plains, 1),
+    (Island, 1),
+    (Saruli , 4),  
+    (WallOfRoots , 4),  
+    (SylvanCaryatid , 4),
+    (WallOfBlossoms, 4),
+    (Battlement , 4),
+    (Axebane, 4),
+    (TrophyMage, 2),
+    (Staff, 1),
+    (Duskwatch, 4),
+    (Arcades, 4),
+    (CollectedCompany,4)
+]
+
+DECK = [ cardtype for cardtype, i in CARDS for _ in range(i) ]
+
+assert len(DECK) == 60
+
+CARDS_BULWARK = [
+    (WindsweptHeath , 10),
     (TempleGarden , 3),
     (BreedingPool , 3),
     (Forest, 2),
@@ -28,50 +56,88 @@ CARDS = [
     (Saruli , 4),  
     (WallOfRoots , 4),  
     (SylvanCaryatid , 4),
+    (WallOfBlossoms, 3),
+    (WalkingBulwark, 3),
     (Battlement , 4),
     (Axebane, 4),
     (TrophyMage, 2),
     (Staff, 1),
-    (Duskwatch, 3),
-    (Arcades, 4),
+    (Duskwatch, 4),
+    (Arcades, 3),
     (CollectedCompany,4)
 ]
 
-DECK = [ cardtype for cardtype, i in CARDS for _ in range(i) ]
+DECK_BULWARK = [ cardtype for cardtype, i in CARDS for _ in range(i) ]
+
+assert len(DECK_BULWARK) == 60
 
 
-
-def do_run(db_path, C, max_turns, n_iters,*args):
-    stats=  mtg_ai.transposition_db.load_statistics(db_path)
+def do_run(db_path, params,*args):
+    stats = get_stats(db_path)
     random.seed()
     initial_game = game = GameState([0])
     node = None
+    max_turns = params['max_turns']
     build_deck(game,0,DECK, shuffle=True, hand_size=7)
-    while not mtg_ai.search.staff_victory(game):
+    while not mtg_ai.search.staff_victory(game) and game.turn_number < max_turns:
         searcher = mtg_ai.search.MCTSSearcher(game,stats,mtg_ai.search.staff_victory,
-        C=C, max_turns=max_turns, n_iters=n_iters)
+        **params)
         node = searcher.choose()
         game = node.game_state
+    stats = {k: v for k,v in stats.items()}
+    return (stats, canonical_key(initial_game), node.game_state.turn_number)
 
-    mtg_ai.transposition_db.merge_statistics(db_path,stats)
-    mtg_ai.transposition_db.save_result(db_path, canonical_key(initial_game),node.game_state.turn_number)
 
-def run_batch(batch_size, db_path, C, max_turns, n_iters):
-    if batch_size > 1:
-        pool = multiprocessing.Pool()
-        pool.map(functools.partial(do_run, db_path, C, max_turns,n_iters),range(batch_size-1))
-    do_run(db_path,C, max_turns,n_iters)
+def save_results(db_path, stats, key, turn_no):
+    assert os.path.exists(os.path.dirname(db_path))
+    mtg_ai.transposition_db.merge_statistics(db_path,statistics=stats)
+    mtg_ai.transposition_db.save_result(db_path,key,turn_no)
+
+
+async def run_batch(batch_size, db_path, params):
+
+    with ProcessPoolExecutor() as executor:
+        loop = asyncio.get_running_loop()
+        tasks = [
+            loop.run_in_executor(executor,do_run, db_path, params)
+            for _ in range(batch_size)
+        ]
+        for task in asyncio.as_completed(tasks):
+            task_result = await task
+            save_results(db_path,*task_result)
+
+
+def get_stats(db_path) -> dict | LazyTranspositionDB:
+    if not os.path.exists(db_path):
+        return {}
+    size = os.stat(db_path).st_size
+    if size > 50*1e6:
+        return LazyTranspositionDB(db_path)
+    else:
+        return mtg_ai.transposition_db.load_statistics(db_path)
 
 
 if __name__ == "__main__":
     import argparse 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--batch_size", required=False, type=int, default=1)
-    parser.add_argument("--db", required=False, default=DB)
-    parser.add_argument("--C", required=False, default=1.2,type=float)
-    parser.add_argument("--max_turns", required=False, default=10, type=int)
-    parser.add_argument("--n_iters", required=False, default=500, type=int)
+    parser.add_argument("--batch_size", "-b", required=False, type=int, default=1)
+    parser.add_argument("--db", "-d", required=False, default=DB)
+    parser.add_argument("--C", "-C", required=False, default=1.2,type=float)
+    parser.add_argument("--max_turns", "-m", required=False, default=10, type=int)
+    parser.add_argument("--n_iters", "-n", required=False, default=500, type=int)
 
     args = parser.parse_args()
+    db_path = os.path.expanduser(args.db)
+    db_dir = os.path.dirname(db_path)
+    if not os.path.exists(db_dir):
+        os.makedirs(db_dir)
 
-    run_batch(args.batch_size, args.db, args.C, args.max_turns, args.n_iters)
+    params = {
+        'C': args.C,
+        'max_turns': args.max_turns,
+        'n_iters': args.n_iters
+    }
+
+    asyncio.run(
+        run_batch(args.batch_size, db_path,params)
+    )
