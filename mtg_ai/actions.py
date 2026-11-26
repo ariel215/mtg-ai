@@ -78,7 +78,7 @@ class Play(Action):
         card = game_state.get(card)
         card.zone = zones.Field(owner=card.zone.owner)
         if CardType.Creature in card.attrs.types:
-            game_state.summoning_sick.add(card)
+            game_state.summoning_sick.add(card.uid)
         return Event(self, game_state, source=card,cause=card)
 
 class MoveTo(Action):
@@ -153,7 +153,7 @@ class TapSymbol(Action):
     
     def choices(self, game_state: GameState):
         card = game_state.get(self.card)
-        return [] if card.tapped or card in game_state.summoning_sick else [{}]
+        return [] if card.tapped or card.uid in game_state.summoning_sick else [{}]
 
     def do(self, game_state):
         game_state.get(self.card).tapped = True

@@ -72,7 +72,7 @@ def staff_victory(game: GameState) -> bool:
     if not scalers:
         return False
     
-    if all(card in game.summoning_sick for card in scalers):
+    if all(card.uid in game.summoning_sick for card in scalers):
         return False
     
     walls = [card for card in field if 'wall' in card.attrs.subtypes]

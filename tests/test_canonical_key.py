@@ -148,7 +148,7 @@ def test_summoning_sick_vs_not():
     """
     g1, _ = fresh_state((decklist.Battlement, zones.Field(0)))
     [b] = g1.objects
-    g1.summoning_sick.add(b)  # summoning_sick stores Card objects, not UIDs
+    g1.summoning_sick.add(b.uid)
 
     g2, _ = fresh_state((decklist.Battlement, zones.Field(0)))
     # summoning_sick is empty in g2
@@ -260,3 +260,19 @@ def test_card_order_in_hand_irrelevant():
     b2.zone = zones.Hand(0)
 
     assert canonical_key(g1) == canonical_key(g2)
+
+
+def test_hash_kind_currently_does_not_affect_the_key():
+    """
+    Characterization: HashKind is stored on the state but never read, so
+    FULL and VISIBLE states with identical contents produce identical keys.
+    If visible-state hashing is implemented, this test should be replaced
+    with real sensitivity checks.
+    """
+    def build(kind):
+        gs = game.GameState([0], hash_kind=kind)
+        decklist.Forest(gs).zone = zones.Field(0)
+        return gs
+
+    assert canonical_key(build(game.HashKind.FULL)) == canonical_key(
+        build(game.HashKind.VISIBLE))

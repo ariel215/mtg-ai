@@ -48,7 +48,7 @@ def canonical_key(gs: 'GameState') -> tuple:
         zone_owner = -1 if (zone is None or zone.owner is None) else zone.owner
         zone_pos   = -1 if (zone is None or zone.position is None) else zone.position
         tapped     = getattr(obj, 'tapped', False)
-        sick       = obj in gs.summoning_sick
+        sick       = obj.uid in gs.summoning_sick
         counters   = tuple(sorted(
             (k, v) for k, v in getattr(obj, 'counters', {}).items() if v != 0
         ))
@@ -86,7 +86,7 @@ class GameState:
         self.mana_pool = mana_pool or Mana()
         self.turn_number = turn_number
         self.triggers: List[Tuple[Event, 'TriggeredEffect']] = [] #: triggers waiting to go onto the stack
-        self.summoning_sick: Set[int] = set() #: summoning sick cards
+        self.summoning_sick: Set[int] = set() #: summoning sick cards, by uid
         self.land_drops = land_drops  #: the number of lands that can still be played this turn
         self.active_player = 0
         self.active_effects: 'Set[ActiveEffect]' = set()
@@ -96,7 +96,7 @@ class GameState:
         new_game_state = GameState(self.players,mana_pool=self.mana_pool.copy(), turn_number=self.turn_number,
             land_drops=self.land_drops, hash_kind=self.hash_kind, active_player=self.active_player)
         new_game_state.objects = [obj.copy(new_game_state) for obj in self.objects]
-        new_game_state.summoning_sick = {new_game_state.get(card) for card in self.summoning_sick}
+        new_game_state.summoning_sick = {uid for uid in self.summoning_sick}
         new_game_state.triggers = self.triggers.copy()
         new_game_state.active_effects = self.active_effects.copy()
         return new_game_state

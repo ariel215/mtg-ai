@@ -289,3 +289,37 @@ def test_integration_with_mcts_searcher(tmp_path):
 
     # Root was seeded, so visits include the pre-loaded count plus this run's
     assert s2.root.stats.visits > visits_after_s1
+
+
+# ---------------------------------------------------------------------------
+# load_result (singular)
+# ---------------------------------------------------------------------------
+
+def test_load_result_roundtrip(tmp_path):
+    db = str(tmp_path / "results.db")
+    key, _ = _simple_key()
+    transposition_db.save_statistics(db, {key: MCTSInfo(value=0.5, visits=2)})
+    transposition_db.save_result(db, key, 4)
+    assert transposition_db.load_result(db, key) == 4
+
+
+def test_load_result_returns_none_for_unknown_state(tmp_path):
+    db = str(tmp_path / "results.db")
+    known, _ = _simple_key()
+    other, _ = _random_key()
+    transposition_db.save_statistics(db, {known: MCTSInfo(value=0.5, visits=2)})
+    transposition_db.save_result(db, known, 2)
+    assert transposition_db.load_result(db, other) is None
+
+
+def test_save_result_seeds_zero_visit_statistics(tmp_path):
+    # Characterization: save_result inserts an MCTSInfo(0, 0) stats row for a
+    # state that has no statistics yet.  Those zero-visit entries flow back
+    # through load_statistics into MCTSSearcher (see test_search_unit.py).
+    db = str(tmp_path / "results.db")
+    key, _ = _simple_key()
+    transposition_db.save_result(db, key, 3)
+    loaded = transposition_db.load_statistics(db)
+    assert key in loaded
+    assert loaded[key].visits == 0
+    assert loaded[key].value == 0.0

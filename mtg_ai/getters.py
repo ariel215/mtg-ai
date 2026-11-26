@@ -50,12 +50,12 @@ class Zone:
     def __init__(self, zone: zones.Zone, owner=None, position=None):
         self.zone = zone
         self.owner = owner
-        self.postion = position
+        self.position = position
     
     def __call__(self, game_state):
         return type(self.zone)(
             self.owner(game_state), 
-            self.postion)
+            self.position)
 
 class FromZone:
 
@@ -69,8 +69,8 @@ class FromZone:
     def __call__(self, game_state):
         zone = game_state.in_zone(self.zone(game_state))
         if self.top is not None:
-            return zone[-(1+self.top):]
-        if self.bottom is not None:
+            return zone[-self.top:]
+        elif self.bottom is not None:
             return zone[:self.bottom]
         
         return zone

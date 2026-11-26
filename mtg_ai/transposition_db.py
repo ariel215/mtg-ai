@@ -312,7 +312,7 @@ def load_result(path: str, game: tuple) -> int | None:
         gs_id = gs_row['id']
         result = conn.execute(
             "SELECT final_turn FROM mcts_results WHERE game_state_id = ?",
-            gs_id
+            f"{gs_id}"
         ).fetchone()
         if result is not None:
             return result['final_turn']

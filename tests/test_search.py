@@ -41,19 +41,19 @@ def test_add():
     f.zone = zones.Hand(0)
     def condition(gs):
         return gs.mana_pool.green == 1
-    
+
     result = search.bfs(gs,condition,100)
-    assert result is not None
+    assert result.final_state is not None
 
 def test_play():
     gs = game.GameState([0])
-    hand = [decklist.Forest(gs), decklist.Saruli(gs)]
-    for card in hand: 
+    hand = [decklist.Forest(gs), decklist.Forest(gs), decklist.Saruli(gs)]
+    for card in hand:
         card.zone = zones.Hand(0)
     def condition(gs):
         return len(gs.in_zone(zones.Field())) == 2
     result = search.bfs(gs, condition, 100)
-    assert result is not None
+    assert result.final_state is not None
 
 @pytest.mark.skip
 def test_search():

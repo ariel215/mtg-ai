@@ -35,7 +35,7 @@ class Mana:
             if field := abbreviations.get(char):
                 setattr(mana, field, getattr(mana, field) + 1)
             else:
-                mana.generic += int(field)
+                mana.generic += int(char)
         return mana
 
     def __iadd__(self, other):
@@ -124,7 +124,7 @@ class Mana:
                 continue
             # else
             other_color -= self_color
-            if gold_available > other_color:
+            if gold_available >= other_color:
                 gold_available -= other_color
                 continue
             # else
